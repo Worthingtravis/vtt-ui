@@ -364,9 +364,32 @@
     /* toast for clipboard / share confirmation */
     #toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #0f172a; border: 1px solid #38bdf8; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; font-size: 13px; opacity: 0; transition: opacity .15s; pointer-events: none; z-index: 50; }
     #toast.show { opacity: 1; }
-    /* search bar wrapper for dropdown anchoring */
-    .qwrap { position: relative; flex: 1; min-width: 280px; display: flex; }
-    .qwrap input { flex: 1; }
+    /* search bar wrapper for dropdown anchoring — full-width, big input
+       on its own row so pasting a Twitch VOD URL feels natural and the
+       search is the unambiguous primary action. */
+    .qwrap { position: relative; flex: 1 1 100%; min-width: 100%; display: flex; }
+    .qwrap input { flex: 1; font-size: 17px; padding: 14px 44px 14px 18px; border-radius: 8px; }
+    .qwrap input:focus { outline: 2px solid #38bdf8; outline-offset: 0; }
+    .qwrap .qclear { right: 10px; font-size: 20px; }
+    /* URL-paste affordance */
+    .qpaste-hint { display: none; padding: 10px 14px; background: #131a3a; border: 1px solid #312e81; border-radius: 6px; margin: 8px 0 12px; font-size: 13px; color: #c7d2fe; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .qpaste-hint.visible { display: flex; }
+    .qpaste-hint .qp-text { flex: 1; min-width: 0; }
+    .qpaste-hint .qp-text b { color: #fde047; }
+    .qpaste-hint button { background: #6441a5; color: #f3e8ff; border: 1px solid #7d5bbe; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 12px; }
+    .qpaste-hint button:hover { background: #7d5bbe; }
+    /* Logged-in personalization — shown when twitch login matches a creator */
+    .my-vods { background: linear-gradient(135deg, #0c1226 0%, #131a3a 100%); border: 1px solid #4338ca; border-radius: 10px; padding: 14px 18px; margin: 0 0 16px; }
+    .my-vods .mv-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
+    .my-vods .mv-title { color: #c7d2fe; font-size: 13px; font-weight: 500; }
+    .my-vods .mv-title b { color: #fde047; }
+    .my-vods .mv-count { color: #94a3b8; font-size: 11px; }
+    .my-vods .mv-list { display: flex; flex-direction: column; gap: 4px; max-height: 280px; overflow-y: auto; }
+    .my-vods .mv-vod { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 10px; padding: 6px 10px; background: #0c1226; border: 1px solid #1f2937; border-radius: 6px; text-decoration: none; transition: background .1s; }
+    .my-vods .mv-vod:hover { background: #131a3a; border-color: #312e81; }
+    .my-vods .mv-vod-date { color: #94a3b8; font-size: 11px; font-variant-numeric: tabular-nums; }
+    .my-vods .mv-vod-title { color: #e0e7ff; font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .my-vods .mv-vod-go { color: #818cf8; font-size: 12px; flex-shrink: 0; }
     .help-trigger { background: transparent; border: 0; color: #6b7280; cursor: pointer; padding: 4px 8px; font-size: 12px; }
     .help-trigger:hover { color: #7dd3fc; }
     /* auth status block — sits next to #genMeta in the header */
@@ -428,9 +451,14 @@
 <main>
   <div class="controls">
     <div class="qwrap">
-      <input id="q" placeholder="search clips and full VOD transcripts…  (⌘K to focus, ? for help)" autofocus>
+      <input id="q" placeholder="search a phrase, paste a twitch VOD URL, or filter by creator…  ⌘K to focus" autofocus>
       <button class="qclear" id="qclear" title="clear search (Esc)" aria-label="clear search">×</button>
       <div id="recent"></div>
+    </div>
+    <div class="qpaste-hint" id="qPasteHint" role="status">
+      <i data-lucide="link-2">🔗</i>
+      <span class="qp-text">that looks like a <b>Twitch VOD URL</b> — want to add it to the corpus?</span>
+      <button id="qPasteSubmit">+ submit this VOD</button>
     </div>
     <div class="modes" id="modes">
       <button data-mode="all" class="active" title="search clip titles + full VOD transcripts together">all</button>
@@ -575,12 +603,15 @@ function cutWillFail(creator, vodfile) {
 }
 
 // --- Deep-link VOD detail card --------------------------------------------
-// Surfaces ONE VOD (no transcript search) when ?vod=<creator>/<basename> is
-// in the URL. Submit-modal "already in corpus" hits this; demo-button hits
-// this. Click play here = open floating Twitch player at t (or 0 if absent).
+// Surfaces ONE VOD when ?vod=<creator>/<basename> is in the URL — and now
+// also: this-VOD's events (mini timeline) + same-creator picks. Avoids the
+// "lonely card on a sea of dark" look the bare layout had.
 async function renderVodDetailCard(creator, basename, t) {
   $("#count").textContent = `loading vod…`;
-  const v = await findVodByKey(creator, basename);
+  const [v, allVods] = await Promise.all([
+    findVodByKey(creator, basename),
+    loadAllVodsIndex(),
+  ]);
   if (!v) {
     $("#results").innerHTML = `
       <div class="vod-detail-empty">
@@ -591,45 +622,85 @@ async function renderVodDetailCard(creator, basename, t) {
     return;
   }
   const titleStr = v.title || v.b;
-  const tStr = (t != null && Number.isFinite(t) && t > 0) ? `@ ${fmtT(t)}` : "from the start";
-  const twitchTime = (t != null && Number.isFinite(t) && t > 0) ? twitchTimeArg(t) : "0h0m0s";
+  const tHasValue = (t != null && Number.isFinite(t) && t > 0);
+  const tStr = tHasValue ? `@ ${fmtT(t)}` : "from the start";
+  const twitchTime = tHasValue ? twitchTimeArg(t) : "0h0m0s";
   const tvLink = v.tv
     ? `<a class="vd-twitch" target="_blank" rel="noopener"
           href="https://www.twitch.tv/videos/${encodeURIComponent(v.tv)}?t=${twitchTime}"
           title="open this VOD on twitch.tv at ${escape(tStr)}"><i data-lucide="external-link">↗</i> open on twitch.tv</a>`
     : "";
   const playBtn = v.tv
-    ? `<button class="vd-play" data-tv="${escape(v.tv)}" data-tsec="${t || 0}" title="open the inline twitch player ${escape(tStr)}">▶ play here ${escape(tStr)}</button>`
+    ? `<button class="vd-play" data-tv="${escape(v.tv)}" data-tsec="${t || 0}" title="open the inline twitch player ${escape(tStr)}"><i data-lucide="play">▶</i> play here ${escape(tStr)}</button>`
     : `<span class="vd-no-tv">no twitch link — can't embed</span>`;
-  const searchPrompt = `or type a phrase above to search inside this VOD's transcript`;
+  // Same-creator picks (excluding this VOD)
+  const sameCreator = allVods
+    .filter((x) => x.c === v.c && x.b !== v.b && x.tv)
+    .slice(0, 8);
+  const sameCreatorHtml = sameCreator.length ? `
+    <div class="my-vods" style="margin-top:16px">
+      <div class="mv-head">
+        <div class="mv-title">more from <b>${escape(v.c)}</b></div>
+        <div class="mv-count">${sameCreator.length} other VOD${sameCreator.length === 1 ? "" : "s"}</div>
+      </div>
+      <div class="mv-list">
+        ${sameCreator.map((o) => {
+          const date = (o.b.match(/^(\d{4}-\d{2}-\d{2})/) || [, ""])[1];
+          return `<a class="mv-vod" href="?vod=${encodeURIComponent(o.c + "/" + o.b)}" title="${escape(o.title || o.b)}">
+            <span class="mv-vod-date">${escape(date || "")}</span>
+            <span class="mv-vod-title">${escape(o.title || o.b)}</span>
+            <span class="mv-vod-go"><i data-lucide="arrow-right">→</i></span>
+          </a>`;
+        }).join("")}
+      </div>
+    </div>` : "";
   $("#results").innerHTML = `
     <div class="vod-detail">
       <div class="vd-meta">
         <span class="creator"><span class="badge">vod</span>${escape(v.c)}</span>
         ${v.tv ? `<span class="vd-twid">twitch_vod_id ${escape(String(v.tv))}</span>` : ""}
+        ${tHasValue ? `<span class="vd-twid" style="color:#fde047"><i data-lucide="link-2">🔗</i> deep-shared at ${escape(fmtT(t))}</span>` : ""}
       </div>
       <div class="vd-title">${escape(titleStr)}</div>
       <div class="vd-basename">${escape(v.b)}</div>
       <div class="vd-actions">${playBtn}${tvLink}</div>
-      <div class="vd-hint">${escape(searchPrompt)}</div>
-    </div>`;
+      <div class="vd-hint"><i data-lucide="search">🔍</i> type a phrase in the search box above to find moments inside this VOD's transcript</div>
+    </div>
+    <div id="vdEvents"></div>
+    ${sameCreatorHtml}`;
   $("#count").textContent = `1 vod · ${escape(v.c)}`;
+  refreshIcons();
   // Wire up the play button — uses the floating Twitch player.
   const pb = $("#results").querySelector(".vd-play");
   if (pb) {
     pb.addEventListener("click", () => {
       const tv = pb.dataset.tv;
       const ts = Number(pb.dataset.tsec || 0);
-      // Reuse the floating player. Build a synthetic "row" for now-playing
-      // outline tracking — the .vod-detail card itself is fine.
       const card = $("#results .vod-detail");
       showTwitchPlayer(card || pb, tv, ts);
     });
-    // Auto-open if t was provided (the timestamp share case).
-    if (t != null && Number.isFinite(t) && t > 0) {
-      setTimeout(() => pb.click(), 200);
-    }
+    if (tHasValue) setTimeout(() => pb.click(), 200);
   }
+  // Async: fetch this VOD's events from /api/events and inline a timeline card.
+  loadEventsForVod(v).then((evs) => {
+    if (!evs.length) return;
+    const eventBox = document.getElementById("vdEvents");
+    if (!eventBox) return;
+    eventBox.innerHTML = renderVodTimelineCard({
+      c: v.c, b: v.b, tv: v.tv, title: v.title, events: evs,
+    });
+    attachTimelineHandlers();
+    refreshIcons();
+  });
+}
+
+async function loadEventsForVod(v) {
+  try {
+    const r = await fetch(`/api/events?creator=${encodeURIComponent(v.c)}&limit=2000`);
+    if (!r.ok) return [];
+    const d = await r.json();
+    return (d.hits || []).map((h) => h.rec).filter((e) => e.c === v.c && e.b === v.b);
+  } catch { return []; }
 }
 const STAR_KEY = "vtt_starred_v1";
 const RECENT_KEY = "vtt_recent_v1";
@@ -1833,9 +1904,26 @@ function syncQClear() {
   const btn = $("#qclear");
   if (btn) btn.classList.toggle("visible", $("#q").value.length > 0);
 }
+// Detect a Twitch VOD URL or bare numeric VOD id pasted into the search
+// box and show a "submit this VOD" affordance instead of running a doomed
+// text search. Bare 9-12 digit numbers are treated as Twitch VOD IDs.
+const TWITCH_URL_RE = /(?:twitch\.tv\/videos\/|twitch\.tv\/[^/]+\/v\/|vodvod\.top\/.*)(\d{6,12})/i;
+const BARE_VOD_ID_RE = /^\s*(\d{8,12})\s*$/;
+function detectVodInQuery(q) {
+  const m = q.match(TWITCH_URL_RE) || q.match(BARE_VOD_ID_RE);
+  if (m) return { url: q.includes("twitch") || q.includes("vodvod") ? q : `https://www.twitch.tv/videos/${m[1]}`, id: m[1] };
+  return null;
+}
+function syncQPasteHint() {
+  const hint = $("#qPasteHint");
+  if (!hint) return;
+  const v = $("#q").value.trim();
+  hint.classList.toggle("visible", !!detectVodInQuery(v));
+}
 $("#q").addEventListener("input", () => {
   hideRecent();
   syncQClear();
+  syncQPasteHint();
   debounce();
 });
 $("#q").addEventListener("focus", () => {
@@ -1849,7 +1937,13 @@ $("#qclear").addEventListener("click", () => {
   $("#q").value = "";
   $("#q").focus();
   syncQClear();
+  syncQPasteHint();
   runSearch();
+});
+$("#qPasteSubmit").addEventListener("click", () => {
+  const v = $("#q").value.trim();
+  const det = detectVodInQuery(v);
+  if (det) openSubmit(det.url);
 });
 $("#creator").addEventListener("change", runSearch);
 $("#modes").querySelectorAll("button").forEach((b) => {
@@ -2222,6 +2316,7 @@ async function refreshAuth() {
   const loginBtn = document.getElementById("loginBtn");
   const badge    = document.getElementById("userBadge");
   const loginEl  = document.getElementById("userLogin");
+  let session = null;
   try {
     const r = await fetch("/api/auth/me", { credentials: "same-origin" });
     if (!r.ok) throw new Error("HTTP " + r.status);
@@ -2231,6 +2326,7 @@ async function refreshAuth() {
       loginEl.textContent = "@" + label;
       badge.hidden = false;
       loginBtn.hidden = true;
+      session = d;
     } else {
       badge.hidden = true;
       loginBtn.hidden = false;
@@ -2239,6 +2335,52 @@ async function refreshAuth() {
     badge.hidden = true;
     loginBtn.hidden = false;
   }
+  state.session = session;
+  // If the logged-in handle matches a creator dir we have, surface their
+  // VODs as a personalized section on the landing page (only when nothing
+  // else is being rendered — search query active or a deep-link page).
+  if (session && session.login && state.mode === "all" && !$("#q").value.trim() && !location.search.includes("vod=")) {
+    injectMyVodsIntoLanding(session.login).catch(() => {});
+  }
+}
+
+async function injectMyVodsIntoLanding(login) {
+  const vods = await loadAllVodsIndex();
+  const ll = login.toLowerCase();
+  const mine = vods.filter((v) => (v.c || "").toLowerCase() === ll);
+  if (!mine.length) return;
+  // Wait for the landing card to be in the DOM (renderLanding has run)
+  const landing = document.querySelector(".landing");
+  if (!landing) return;
+  // Avoid double-insertion
+  if (landing.querySelector(".my-vods")) return;
+  // Sort newest first
+  mine.sort((a, b) => (b.b || "").localeCompare(a.b || ""));
+  const html = `
+    <div class="my-vods">
+      <div class="mv-head">
+        <div class="mv-title"><i data-lucide="user">👤</i> welcome back <b>@${escape(login)}</b> — ${mine.length} of your VOD${mine.length === 1 ? "" : "s"} ${mine.length === 1 ? "is" : "are"} indexed</div>
+        <a class="mv-count" href="?creator=${encodeURIComponent(mine[0].c)}">view all →</a>
+      </div>
+      <div class="mv-list">
+        ${mine.slice(0, 8).map((v) => {
+          const date = (v.b.match(/^(\d{4}-\d{2}-\d{2})/) || [, ""])[1];
+          return `<a class="mv-vod" href="?vod=${encodeURIComponent(v.c + "/" + v.b)}" title="${escape(v.title || v.b)}">
+            <span class="mv-vod-date">${escape(date || "")}</span>
+            <span class="mv-vod-title">${escape(v.title || v.b)}</span>
+            <span class="mv-vod-go"><i data-lucide="arrow-right">→</i></span>
+          </a>`;
+        }).join("")}
+      </div>
+    </div>`;
+  // Insert after the lede paragraph, before the example-row chips.
+  const lede = landing.querySelector(".lede");
+  if (lede) {
+    lede.insertAdjacentHTML("afterend", html);
+  } else {
+    landing.insertAdjacentHTML("afterbegin", html);
+  }
+  refreshIcons();
 }
 document.getElementById("loginBtn").addEventListener("click", () => {
   // Preserve the current URL (search query, mode, etc.) across the round-trip.
