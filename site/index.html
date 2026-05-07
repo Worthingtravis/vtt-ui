@@ -366,6 +366,12 @@
     .ev-item .ev-up:hover { color: #6ee7b7; border-color: #6ee7b7; background: rgba(16, 185, 129, 0.1); }
     .ev-item .ev-down.voted { color: #fca5a5; border-color: #fca5a5; background: rgba(239, 68, 68, 0.12); }
     .ev-item .ev-down:hover { color: #fca5a5; border-color: #fca5a5; background: rgba(239, 68, 68, 0.1); }
+    /* Anonymous viewers: vote buttons stay clickable so they can discover
+       the affordance, but are dimmed and the click triggers a log-in toast
+       instead of submitting. Distinct from disabled because we want them
+       focusable for keyboard nav. */
+    .ev-item .vote-locked { opacity: 0.45; }
+    .ev-item .vote-locked:hover { opacity: 0.85; }
     .ev-item:first-child { border-top: 0; }
     .ev-item:hover { background: #131a3a; }
     .ev-item.now-playing { background: #0c1f3a; outline: 1px solid #38bdf8; outline-offset: -1px; }
@@ -899,6 +905,7 @@ const ROADMAP = {
     ["docked twitch player", "playback panel anchors above the active VOD's timeline (or list-view group) instead of floating bottom-right"],
     ["list-view VODs grouped", "events list buckets by VOD with a header bar that doubles as the player anchor"],
     ["default browse view", "every mode/creator combo shows VODs with date, duration, and per-class event chips instead of an empty landing"],
+    ["auth-gated event votes", "👍/👎 buttons require Twitch login; each label row is attributed to the submitter so good labelers stand out"],
   ],
   next: [
     ["VOD thumbnails", "swap basenames for real Twitch preview images so VODs are scannable"],
@@ -1548,12 +1555,18 @@ function attachTimelineHandlers() {
       navigator.clipboard.writeText(url).then(() => toast("link copied"));
     });
   });
-  // --- Per-event thumbs-up / thumbs-down feedback. Stores locally for
-  // optimistic UI + POSTs to serve.py's /api/event_label/append so the
-  // retrain coordinator picks it up next time. Idempotent on the
-  // backend (label_lib dedupes by basename + t_ms). Tolerant of network
-  // failure — the local cache still drives the visual state.
+  // --- Per-event thumbs-up / thumbs-down feedback. Auth-gated: the Pages
+  // Function /api/event_label/append validates the vtt_session cookie and
+  // injects X-VTT-User-Sub / X-VTT-User-Login headers so each label row in
+  // the manifest is attributable. Anonymous users see ghost-state buttons
+  // that prompt log-in; the local optimistic cache + retrain-coordinator
+  // round-trip behave the same once authenticated.
+  const isAuthed = () => !!(state.session && state.session.authenticated);
   function castVote(row, label /* 1=up, 0=down */) {
+    if (!isAuthed()) {
+      toast("log in to vote — feedback is recorded against your handle");
+      return;
+    }
     const rec = evHitFromRow(row).rec;
     const key = `vote:${rec.c}/${rec.b}@${rec.t.toFixed(2)}#${rec.e}`;
     const existing = state.eventVotes.get(key);
@@ -1572,17 +1585,33 @@ function attachTimelineHandlers() {
     row.querySelector(".ev-up")?.classList.toggle("voted", label === 1);
     row.querySelector(".ev-down")?.classList.toggle("voted", label === 0);
     toast(label === 1 ? "thanks — marked correct" : "thanks — marked false-positive");
-    if (RENDER_API) {
-      fetch(`${RENDER_API}/api/event_label/append`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          creator: rec.c, basename: rec.b, event: rec.e,
-          t_sec: rec.t, label: label, score: rec.s,
-        }),
-      }).catch(() => { /* offline ok — local state still recorded */ });
-    }
+    fetch(`/api/event_label/append`, {
+      method: "POST",
+      credentials: "same-origin",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        creator: rec.c, basename: rec.b, event: rec.e,
+        t_sec: rec.t, label: label, score: rec.s,
+      }),
+    }).then(async (r) => {
+      if (r.status === 401) {
+        // Session expired between page-load auth check and the click —
+        // roll the optimistic state back so the row visually reflects that
+        // the vote didn't actually save.
+        state.eventVotes.delete(key);
+        saveEventVotes();
+        row.querySelector(".ev-up")?.classList.remove("voted");
+        row.querySelector(".ev-down")?.classList.remove("voted");
+        toast("session expired — log in again to vote");
+      }
+    }).catch(() => { /* offline ok — local state still recorded */ });
   }
+  $$(".ev-item .ev-up, .ev-item .ev-down").forEach((btn) => {
+    if (!isAuthed()) {
+      btn.classList.add("vote-locked");
+      btn.title = "log in to vote — feedback trains the detectors";
+    }
+  });
   $$(".ev-item .ev-up").forEach((btn) => {
     btn.addEventListener("click", (ev) => {
       ev.stopPropagation();

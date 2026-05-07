@@ -38,6 +38,20 @@ echo "== Static page =="
 hit "/ index.html"           "$BASE/"                      '<title>vtt'
 hit "?mode=event"            "$BASE/?mode=event"           '<title>vtt'
 
+echo "== Auth gates =="
+# Anonymous vote MUST be rejected with 401 — the Pages Function reads the
+# vtt_session cookie and forwards X-VTT-User-Sub to serve.py. Without the
+# cookie, no proxy hop happens and no manifest row gets written.
+auth_code=$(curl -s --compressed -X POST "$BASE/api/event_label/append" \
+  -H "content-type: application/json" \
+  -d '{"creator":"_smoke","basename":"_smoke","event":"_smoke","t_sec":0,"label":1}' \
+  -o /dev/null -w "%{http_code}")
+if [ "$auth_code" = "401" ]; then
+  ok "/api/event_label/append rejects anon (401)"
+else
+  bad "/api/event_label/append should 401 anon, got HTTP $auth_code"
+fi
+
 if [ $fail -gt 0 ]; then
   printf "\n\033[31mFAILED %d check(s)\033[0m\n" "$fail"
   exit 1
