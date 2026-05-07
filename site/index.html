@@ -72,14 +72,14 @@
        here" on any row of the same VOD = same iframe stays alive and we
        just call .seek(). The active row gets a cyan outline so you can
        see which timestamp the player jumped to. */
-    #twitchFloatingPanel { position: fixed; bottom: 16px; right: 16px; width: 480px; z-index: 90;
+    /* The player is always anchor-docked inside the active row's container
+       (tl-card / vod-group / fallback to the row itself). Position is
+       computed from the anchor target's bbox by JS, recomputed on
+       scroll/resize. The iframe never moves DOM-wise to avoid reload, so
+       this is position:fixed even though it visually lives inside a card. */
+    #twitchFloatingPanel { position: fixed; z-index: 90;
       background: #0f172a; border: 1px solid #334155; border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,.6);
-      display: none; overflow: hidden; resize: both; min-width: 280px; min-height: 200px; max-width: 90vw; }
-    /* Anchored mode: docked above the active VOD's timeline track. JS sets
-       left/top/width inline; no resize handle (track width drives it). */
-    #twitchFloatingPanel.anchored { bottom: auto; right: auto; resize: none; max-width: none; }
-    #twitchFloatingPanel.anchored .tfp-bar { cursor: grab; }
-    #twitchFloatingPanel.anchored .tfp-bar:active { cursor: grabbing; }
+      display: none; overflow: hidden; }
     #twitchFloatingPanel.visible { display: flex; flex-direction: column; }
     #twitchFloatingPanel .tfp-bar { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background: #1e293b; border-bottom: 1px solid #334155; cursor: move; user-select: none; }
     #twitchFloatingPanel .tfp-title { color: #c7d2fe; font-size: 12px; font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -143,10 +143,8 @@
       .tl-track { height: 40px; }
       .tl-tick { width: 5px; height: 18px; } /* easier to tap */
       .tl-footer { gap: 8px; font-size: 10px; }
-      /* Floating Twitch player — full-width bottom sheet */
-      #twitchFloatingPanel { width: 100vw; right: 0; bottom: 0; left: 0; border-radius: 8px 8px 0 0; resize: none; min-height: 0; }
-      #twitchFloatingPanel.visible { width: 100vw; }
-      #twitchFloatingPanel .tfp-bar { cursor: default; padding: 8px 10px; }
+      /* Mobile: anchor still applies via JS, just tighten the chrome. */
+      #twitchFloatingPanel .tfp-bar { padding: 8px 10px; }
       /* Submit modal */
       #submit .panel { padding: 16px; max-width: 100%; width: 100%; border-radius: 0; min-height: 100vh; box-sizing: border-box; }
       #submit .row1 { flex-direction: column; gap: 6px; }
@@ -906,6 +904,7 @@ const ROADMAP = {
     ["list-view VODs grouped", "events list buckets by VOD with a header bar that doubles as the player anchor"],
     ["default browse view", "every mode/creator combo shows VODs with date, duration, and per-class event chips instead of an empty landing"],
     ["auth-gated event votes", "👍/👎 buttons require Twitch login; each label row is attributed to the submitter so good labelers stand out"],
+    ["player is always docked", "no more bottom-right floating panel — the twitch player anchors inside the active row's container in every mode"],
   ],
   next: [
     ["VOD thumbnails", "swap basenames for real Twitch preview images so VODs are scannable"],
@@ -1889,7 +1888,8 @@ let _twitchPanel = null;        // <div id="twitchFloatingPanel">
 let _twitchActiveRow = null;    // the .row currently owning the player
 let _anchorTarget = null;       // the element the panel is currently docked above
 let _anchorRaf = 0;             // rAF handle for scroll/resize re-anchor
-let _anchorContainer = null;    // the .tl-card / .vod-group whose visibility hides the panel
+let _anchorContainer = null;    // the .tl-card / .vod-group / .row whose visibility hides the panel
+let _spacerRef = null;          // direct handle to the inserted .player-spacer (so detach can remove it even if it lives outside the container)
 
 function ensureTwitchPanel() {
   if (_twitchPanel) return _twitchPanel;
@@ -1906,27 +1906,6 @@ function ensureTwitchPanel() {
     <div class="tfp-body"></div>`;
   panel.querySelector(".tfp-close").addEventListener("click", hideTwitchPanel);
   panel.querySelector(".tfp-min").addEventListener("click", () => panel.classList.toggle("minimized"));
-  // Drag-to-move via the title bar. Dragging detaches from anchor mode and
-  // returns the panel to free-floating behavior (so users can pop it out
-  // somewhere visible if the active VOD card is scrolled past).
-  const bar = panel.querySelector(".tfp-bar");
-  let dragging = null;
-  bar.addEventListener("mousedown", (ev) => {
-    if (ev.target.closest("button")) return;
-    const r = panel.getBoundingClientRect();
-    dragging = { dx: ev.clientX - r.left, dy: ev.clientY - r.top };
-    detachAnchor();
-    panel.style.right = "auto";
-    panel.style.bottom = "auto";
-    panel.style.width = `${r.width}px`;
-    ev.preventDefault();
-  });
-  document.addEventListener("mousemove", (ev) => {
-    if (!dragging) return;
-    panel.style.left = (ev.clientX - dragging.dx) + "px";
-    panel.style.top = (ev.clientY - dragging.dy) + "px";
-  });
-  document.addEventListener("mouseup", () => { dragging = null; });
   document.body.appendChild(panel);
   _twitchPanel = panel;
   return panel;
@@ -1965,16 +1944,20 @@ function resolveAnchorTarget(row) {
   // the group's header and its event rows — same vertical placement as the
   // timeline card's `track`.
   if (group) return { container: group, target: group.querySelector(".vod-group-body") };
-  return null;
+  // Last-resort fallback: dock the player above the row itself. The spacer
+  // gets inserted as a SIBLING of the row inside the results list, which is
+  // why we track its reference directly rather than scoping queries to the
+  // container.
+  return { container: row, target: row };
 }
 
 function ensureSpacer() {
-  if (!_anchorContainer || !_anchorTarget) return null;
-  let sp = _anchorContainer.querySelector(":scope > .player-spacer, :scope * > .player-spacer");
-  if (sp) return sp;
-  sp = document.createElement("div");
+  if (_spacerRef && _spacerRef.parentNode) return _spacerRef;
+  if (!_anchorTarget) return null;
+  const sp = document.createElement("div");
   sp.className = "player-spacer";
   _anchorTarget.parentNode.insertBefore(sp, _anchorTarget);
+  _spacerRef = sp;
   return sp;
 }
 
@@ -2032,16 +2015,10 @@ function detachAnchor() {
     window.removeEventListener("scroll", _onAnchorTick);
     window.removeEventListener("resize", _onAnchorTick);
   }
-  if (_anchorContainer) {
-    const sp = _anchorContainer.querySelector(".player-spacer");
-    if (sp) sp.remove();
-  }
+  if (_spacerRef) { _spacerRef.remove(); _spacerRef = null; }
   _anchorTarget = null;
   _anchorContainer = null;
-  if (_twitchPanel) {
-    _twitchPanel.classList.remove("anchored");
-    _twitchPanel.style.visibility = "";
-  }
+  if (_twitchPanel) _twitchPanel.style.visibility = "";
 }
 
 function rowDisplayTitle(row) {
@@ -2069,17 +2046,11 @@ function showTwitchPlayer(row, vod, seconds) {
   const container = row.closest(".tl-card, .vod-group");
   if (container) container.classList.add("now-playing");
   _twitchActiveRow = row;
-  // Anchor the panel above the relevant container's anchor target. If the
-  // row is in some other context (search results, clip rows), skip anchor
-  // and the panel stays bottom-right.
+  // Anchor the panel inside the active row's container. resolveAnchorTarget
+  // always returns a usable target (worst case: the row itself), so the
+  // player is never free-floating.
   const anc = resolveAnchorTarget(row);
-  if (anc && anc.target) {
-    attachAnchor(anc.target, anc.container);
-  } else {
-    detachAnchor();
-    // Reset inline styles so panel returns to its CSS-default bottom-right.
-    panel.style.left = ""; panel.style.top = ""; panel.style.width = "";
-  }
+  if (anc && anc.target) attachAnchor(anc.target, anc.container);
 
   // Same VOD → just seek. The iframe stays alive, no reload.
   if (_twitchVod === vod && _twitchPlayer) {
