@@ -434,15 +434,25 @@
     .tl-ruler-mark { position: absolute; top: 0; transform: translateX(-50%); font: 500 9px var(--font-mono); color: var(--ink-3); padding: 2px 4px; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
     .tl-ruler-mark:first-child { transform: translateX(0); padding-left: 6px; }
     .tl-ruler-mark:last-child { transform: translateX(-100%); padding-right: 6px; }
-    .tl-tick { position: absolute; bottom: 4px; width: 3px; height: 20px; border-radius: 2px; cursor: pointer; transition: transform .1s ease, box-shadow .1s; transform: translateX(-50%); opacity: 0.85; }
+    .tl-tick { position: absolute; bottom: 4px; width: 3px; height: 20px; border-radius: 2px; cursor: pointer; transition: transform .1s ease, box-shadow .1s, opacity .15s; transform: translateX(-50%); opacity: 0.85; }
     .tl-tick:hover { opacity: 1; transform: translateX(-50%) scaleY(1.3); box-shadow: 0 0 0 2px rgba(56,189,248,.4); z-index: 2; }
     .tl-tick.active { opacity: 1; box-shadow: 0 0 0 2px var(--accent), 0 0 12px var(--accent-soft); transform: translateX(-50%) scaleY(1.4); z-index: 3; }
+    /* Ticks below the per-class slider's threshold get dimmed (not hidden)
+       so the timeline keeps reading as a full histogram while the slider
+       acts as a confidence filter rather than a display switch. */
+    .tl-tick.dimmed { opacity: 0.16; height: 14px; }
+    .tl-tick.dimmed:hover { opacity: 0.7; }
     /* Class summary line — lives between the timeline and the accordion stack.
        Each chip is clickable and visually pairs with the matching accordion's
        left accent strip. */
     .tl-footer { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 20px 14px; font: 500 11px var(--font-mono); color: var(--ink-1); }
     .tl-legend { display: inline-flex; align-items: center; gap: 8px; padding: 5px 11px; background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: 999px; cursor: default; transition: background .12s, border-color .12s; font-variant-numeric: tabular-nums; }
     .tl-legend::before { content: ""; display: inline-block; width: 7px; height: 7px; background: var(--c, var(--ink-3)); border-radius: 50%; box-shadow: 0 0 0 2px rgba(0,0,0,.3); }
+    /* Chip lights up when the slider for this class is actually filtering —
+       count flips to "kept/total" so users see the slider's effect at a
+       glance without leaving the open accordion. */
+    .tl-legend.partial { border-color: var(--accent); color: var(--accent); }
+    .tl-legend .tl-legend-count { font-family: var(--font-mono); font-weight: 500; }
     .tl-help { color: var(--ink-3); font: 400 11px var(--font-mono); margin: 8px 0 16px; padding: 10px 14px; background: var(--bg-1); border: 1px solid var(--line-soft); border-radius: 8px; letter-spacing: -0.01em; }
     /* List-view event grouping: rows are bucketed by VOD with a header bar
        that doubles as the player-anchor target (player docks above this). */
@@ -1688,7 +1698,7 @@ function renderVodTimelineCard(v) {
     const color = EVENT_COLORS[e.e] || "#94a3b8";
     const meta = eventLabel(e.e);
     return `<div class="tl-tick" style="left:${xPct.toFixed(2)}%;background:${color}"
-              data-tv="${escape(v.tv)}" data-tsec="${e.t}" data-class="${escape(e.e)}"
+              data-tv="${escape(v.tv)}" data-tsec="${e.t}" data-class="${escape(e.e)}" data-score="${e.s.toFixed(3)}"
               title="${escape(meta.name)} @ ${fmtT(e.t)} · score ${e.s.toFixed(2)}"></div>`;
   }).join("");
   const rulerMarks = [0, 0.25, 0.5, 0.75, 1]
@@ -1698,7 +1708,9 @@ function renderVodTimelineCard(v) {
     .filter((cls) => counts[cls])
     .map((cls) => {
       const meta = eventLabel(cls);
-      return `<span class="tl-legend" style="--c:${EVENT_COLORS[cls]}">${meta.emoji} ${counts[cls]} ${escape(meta.name)}</span>`;
+      // data-class + .tl-legend-count let applyFilters update the count to
+      // "kept/total" when the per-class slider is filtering the timeline.
+      return `<span class="tl-legend" data-class="${escape(cls)}" style="--c:${EVENT_COLORS[cls]}">${meta.emoji} <span class="tl-legend-count">${counts[cls]}</span> ${escape(meta.name)}</span>`;
     }).join("");
   const tvLink = v.tv
     ? `<a class="twitchExt" target="_blank" rel="noopener"
@@ -1966,11 +1978,29 @@ function attachTimelineHandlers() {
         return Number(a.dataset.tsec) - Number(b.dataset.tsec);
       });
       visible.forEach((it) => list.appendChild(it));
-      // Timeline ticks intentionally NOT filtered by the per-class slider —
-      // the strip is a full histogram of detections so users see real event
-      // density at a glance. The slider only narrows the accordion's row
-      // list (which is the triage tool). Earlier we filtered both, which
-      // made the timeline appear empty by default at the 0.30 threshold.
+      // Timeline ticks: fade ticks of THIS class that fall below the
+      // slider threshold (opacity 0.18) rather than hide them — keeps
+      // the strip readable as a full histogram while the slider lets
+      // users emphasize the high-confidence subset. Hiding entirely
+      // (the original implementation) made the timeline appear empty
+      // when the default threshold was 0.30.
+      if (card) {
+        card.querySelectorAll(`.tl-tick[data-class="${cls}"]`).forEach((tick) => {
+          const s = Number(tick.dataset.score || 0);
+          tick.classList.toggle("dimmed", s < minScore);
+        });
+        // Update the matching legend chip to show "kept / total" when the
+        // slider is doing real filtering — gives at-a-glance feedback that
+        // the slider affects more than just the accordion list below.
+        const totalForClass = items.length;
+        const legendChip = card.querySelector(`.tl-legend[data-class="${cls}"]`);
+        if (legendChip) {
+          const filtered = kept !== totalForClass;
+          legendChip.classList.toggle("partial", filtered);
+          const countEl = legendChip.querySelector(".tl-legend-count");
+          if (countEl) countEl.textContent = filtered ? `${kept}/${totalForClass}` : String(totalForClass);
+        }
+      }
     }
     buttons.forEach((b) => {
       b.addEventListener("click", (ev) => {
