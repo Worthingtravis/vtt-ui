@@ -1216,6 +1216,11 @@ function renderVodNoEventsPanel(v) {
 // cadence until the job lands in done/error/cancelled. Renders inline
 // progress so the user knows it's running. On done, re-fetches the
 // VOD's events index entry and re-renders the timeline strip in place.
+//
+// 409 vod_audio_missing (chainable:true): swap card to a "queue download + scan"
+//   confirmation state. User clicks → POST /api/scan/download_and_queue then
+//   polls the returned chain job_id with the same poller.
+// 410 vod_audio_unrecoverable: show a dead-end state (no retry button).
 function attachScanKickHandlers(v) {
   const card = document.querySelector(".ne-card");
   if (!card) return;
@@ -1229,7 +1234,12 @@ function attachScanKickHandlers(v) {
 
   function setRunning(stage, msg) {
     btn.disabled = true;
-    btn.innerHTML = `<i data-lucide="loader">⏳</i> scan in progress`;
+    // Label the button by stage so the user knows which phase we're in.
+    const stageLabel =
+      stage === "downloading" ? "downloading VOD" :
+      stage === "scanning"    ? "scan in progress" :
+      "in progress";
+    btn.innerHTML = `<i data-lucide="loader">⏳</i> ${stageLabel}`;
     refreshIcons();
     progress.hidden = false;
     if (note) note.textContent = stage || "starting";
@@ -1244,11 +1254,82 @@ function attachScanKickHandlers(v) {
     if (note) { note.textContent = msg || "scan failed"; note.style.color = "var(--bad)"; }
     progress.hidden = true;
   }
+  function setDeadEnd() {
+    // VOD unrecoverable — never had a vodvod URL.
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    btn.disabled = true;
+    btn.style.display = "none";
+    if (note) {
+      note.innerHTML =
+        `<span style="color:var(--ink-2)">` +
+        `This VOD's source isn't recoverable — it was indexed before R2 mirroring ` +
+        `went in and is no longer on Twitch. Try a different VOD from the list below.` +
+        `</span>`;
+    }
+    progress.hidden = true;
+  }
+
+  // Show the "queue download + scan" confirmation UI and wire the confirm button.
+  function offerChainDownload() {
+    if (note) {
+      note.innerHTML =
+        `Audio for this VOD isn't on the server. Queueing will re-download it ` +
+        `(~5–10 min) then run the scan (~5 min). ` +
+        `<button class="ne-chain-confirm-btn" type="button" ` +
+        `style="margin-left:8px;padding:2px 10px;border-radius:4px;` +
+        `background:var(--accent-soft);border:1px solid var(--accent);` +
+        `color:var(--accent);cursor:pointer;font-size:0.85rem;">` +
+        `queue download + scan` +
+        `</button>`;
+    }
+    btn.disabled = true;
+    btn.innerHTML = `<i data-lucide="download">↓</i> audio missing`;
+    refreshIcons();
+
+    const confirmBtn = card.querySelector(".ne-chain-confirm-btn");
+    if (!confirmBtn) return;
+    confirmBtn.addEventListener("click", async (ev) => {
+      ev.preventDefault();
+      confirmBtn.disabled = true;
+      confirmBtn.textContent = "queueing…";
+      try {
+        const r = await fetch("/api/scan/download_and_queue", {
+          method: "POST",
+          credentials: "same-origin",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ creator: v.c, basename: v.b }),
+        });
+        if (r.status === 401) {
+          const ret = location.pathname + location.search;
+          location.href = "/api/auth/login?returnTo=" + encodeURIComponent(ret);
+          return;
+        }
+        const d = await r.json().catch(() => ({}));
+        if (!r.ok || !d.ok || !d.job_id) {
+          setError(d.error || `HTTP ${r.status}`);
+          return;
+        }
+        if (d.deduped) {
+          toast("already running — tracking existing job");
+        } else {
+          toast("download + scan queued ⚡");
+        }
+        setRunning("downloading", "queued");
+        pollStatus(d.job_id);
+      } catch (e) {
+        setError(String(e.message || e));
+      }
+    });
+  }
+
   async function pollStatus(jobId) {
     try {
       const r = await fetch(`/api/scan/status?job_id=${encodeURIComponent(jobId)}`);
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const d = await r.json();
+      // progress.stage flipping (downloading → scanning → done) mid-poll is
+      // handled naturally: setRunning reads the current stage each call, so
+      // the label updates without any extra state machine.
       const stage = d.progress?.stage || d.state || "queued";
       const msg = d.progress?.msg || "";
       setRunning(stage, msg);
@@ -1263,7 +1344,7 @@ function attachScanKickHandlers(v) {
         setTimeout(() => renderVodDetailCard(v.c, v.b, null), 800);
         return;
       }
-      if (d.state === "error" || d.state === "cancelled") {
+      if (d.state === "failed" || d.state === "cancelled") {
         setError(d.error || `scan ${d.state}`);
         return;
       }
@@ -1292,6 +1373,21 @@ function attachScanKickHandlers(v) {
         // round-trip and return to this exact deep link.
         const ret = location.pathname + location.search;
         location.href = "/api/auth/login?returnTo=" + encodeURIComponent(ret);
+        return;
+      }
+      if (r.status === 409) {
+        // Audio missing but recoverable via vodvod — offer the chain CTA.
+        const d = await r.json().catch(() => ({}));
+        if (d.error === "vod_audio_missing" && d.chainable) {
+          offerChainDownload();
+          return;
+        }
+        setError(d.error || "audio missing");
+        return;
+      }
+      if (r.status === 410) {
+        // Audio unrecoverable — dead end.
+        setDeadEnd();
         return;
       }
       const d = await r.json().catch(() => ({}));

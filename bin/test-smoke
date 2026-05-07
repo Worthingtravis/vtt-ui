@@ -72,6 +72,35 @@ else
   bad "/api/scan/status should 400 without job_id, got HTTP $status_code"
 fi
 
+# /api/scan/download_and_queue is auth-gated like /api/scan/queue.
+dl_scan_code=$(curl -s --compressed -X POST "$BASE/api/scan/download_and_queue" \
+  -H "content-type: application/json" \
+  -d '{"creator":"jagerzgoober","basename":"2026-04-08_drops-adept-roulette-discord-user-socials-dbdcreat"}' \
+  -o /dev/null -w "%{http_code}")
+if [ "$dl_scan_code" = "401" ]; then
+  ok "/api/scan/download_and_queue rejects anon (401)"
+else
+  bad "/api/scan/download_and_queue should 401 anon, got HTTP $dl_scan_code"
+fi
+
+echo "== VOD availability (requires serve.py restart) =="
+# NOTE: these hit serve.py directly via the tunnel URL. Run only after
+# restarting serve.py with the new vod_scan_chain / vod_availability changes.
+# The adept-roulette VOD has a meta sidecar with stream_id but no local mp4.
+LOCAL="${LOCAL:-http://localhost:8765}"
+avail_code=$(curl -s --compressed \
+  "${LOCAL}/api/vod/availability?creator=jagerzgoober&basename=2026-04-08_drops-adept-roulette-discord-user-socials-dbdcreat" \
+  -o /tmp/_smoke_avail -w "%{http_code}" 2>/dev/null || echo "000")
+if [ "$avail_code" = "200" ]; then
+  if grep -qF '"available":false' /tmp/_smoke_avail && grep -qF '"has_stream_id":true' /tmp/_smoke_avail; then
+    ok "/api/vod/availability jagerzgoober/adept-roulette → available:false, has_stream_id:true"
+  else
+    bad "/api/vod/availability jagerzgoober/adept-roulette — 200 but wrong body: $(cat /tmp/_smoke_avail)"
+  fi
+else
+  bad "/api/vod/availability jagerzgoober/adept-roulette — HTTP $avail_code (serve.py may need restart)"
+fi
+
 if [ $fail -gt 0 ]; then
   printf "\n\033[31mFAILED %d check(s)\033[0m\n" "$fail"
   exit 1
