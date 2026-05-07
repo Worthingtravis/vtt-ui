@@ -20,18 +20,8 @@
  * Response: {ok, job_id, deduped?}    (200)
  *           {ok: false, error}        (400/401/409/410/502)
  */
-import {
-  AuthEnv,
-  SESSION_COOKIE,
-  readCookie,
-  unpackSigned,
-} from "../auth/_lib";
-
-interface SessionPayload {
-  sub: string;
-  login: string | null;
-  exp: number;
-}
+import { x402Gate, x402AuditHeaders } from "../_x402";
+import type { GateEnv } from "../_x402_types";
 
 const PUBLIC_R2 = "https://pub-868d2bf7e2f6434c860d65dfe1cadad4.r2.dev";
 
@@ -65,14 +55,25 @@ interface AvailabilityResponse {
   has_meta?: boolean;
 }
 
-export const onRequestPost: PagesFunction<AuthEnv> = async ({ request, env }) => {
+export const onRequestPost: PagesFunction<GateEnv> = async ({ request, env }) => {
   if (!env.LW_COOKIE_SECRET) {
     return json({ ok: false, error: "auth not configured" }, 500);
   }
-  const session = await unpackSigned<SessionPayload>(
-    env.LW_COOKIE_SECRET,
-    readCookie(request, SESSION_COOKIE),
-  );
+  // x402 gate: in SHADOW_MODE this just logs would-block events to KV
+  // without enforcing — the auth requirement below still kicks anons out
+  // with 401, just like before. Once SHADOW_MODE flips off, the gate also
+  // 402s OAuth users who've blown through their daily free quota.
+  const gate = await x402Gate(request, env, {
+    slug: "scan_queue",
+    priceUsd: 0.10,
+    description: "Queue a VOD event scan ($0.10 USDC on Base)",
+    freeQuota: { count: 3, windowSec: 86400 },
+  });
+  if (gate instanceof Response) return gate;
+  const session = gate.session;
+  // Phase 0 still requires login for scan kicks — payment gating applies
+  // ON TOP of auth, not as a replacement. Anonymous can never queue scans
+  // even after we flip enforcement on (matches current behaviour).
   if (!session || !session.sub) {
     return json({ ok: false, error: "log in to queue scans" }, 401);
   }
@@ -141,6 +142,7 @@ export const onRequestPost: PagesFunction<AuthEnv> = async ({ request, env }) =>
       "content-type": "application/json",
       "x-vtt-user-sub": session.sub,
       "x-vtt-user-login": session.login || "",
+      ...x402AuditHeaders(gate),
     },
     body: JSON.stringify({ creator, basename }),
   });
