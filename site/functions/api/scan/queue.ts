@@ -20,6 +20,11 @@
  * Response: {ok, job_id, deduped?}    (200)
  *           {ok: false, error}        (400/401/409/410/502)
  */
+import {
+  SESSION_COOKIE,
+  readCookie,
+  unpackSigned,
+} from "../auth/_lib";
 import { x402Gate, x402AuditHeaders } from "../_x402";
 import type { GateEnv } from "../_x402_types";
 
@@ -59,10 +64,21 @@ export const onRequestPost: PagesFunction<GateEnv> = async ({ request, env }) =>
   if (!env.LW_COOKIE_SECRET) {
     return json({ ok: false, error: "auth not configured" }, 500);
   }
-  // x402 gate: in SHADOW_MODE this just logs would-block events to KV
-  // without enforcing — the auth requirement below still kicks anons out
-  // with 401, just like before. Once SHADOW_MODE flips off, the gate also
-  // 402s OAuth users who've blown through their daily free quota.
+  // Auth check FIRST: anonymous → 401 ("log in to queue scans"), unchanged.
+  // The x402 gate that follows only meters OAuth users, layering payment
+  // on top of the auth requirement. Reordering ensures the existing UX
+  // (logged-out users see "log in" not "pay $0.10") doesn't regress when
+  // SHADOW_MODE flips off.
+  const session = await unpackSigned<{ sub: string; login: string | null; exp: number }>(
+    env.LW_COOKIE_SECRET,
+    readCookie(request, SESSION_COOKIE),
+  );
+  if (!session || !session.sub) {
+    return json({ ok: false, error: "log in to queue scans" }, 401);
+  }
+  // x402 gate: in SHADOW_MODE this logs would-block events to KV but
+  // passes through. After SHADOW_MODE flips off, returns 402 for OAuth
+  // users who've blown through their daily free quota.
   const gate = await x402Gate(request, env, {
     slug: "scan_queue",
     priceUsd: 0.10,
@@ -70,13 +86,6 @@ export const onRequestPost: PagesFunction<GateEnv> = async ({ request, env }) =>
     freeQuota: { count: 3, windowSec: 86400 },
   });
   if (gate instanceof Response) return gate;
-  const session = gate.session;
-  // Phase 0 still requires login for scan kicks — payment gating applies
-  // ON TOP of auth, not as a replacement. Anonymous can never queue scans
-  // even after we flip enforcement on (matches current behaviour).
-  if (!session || !session.sub) {
-    return json({ ok: false, error: "log in to queue scans" }, 401);
-  }
 
   let body: QueuePayload;
   try {
