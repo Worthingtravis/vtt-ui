@@ -851,28 +851,24 @@
   <h1>vtt — search</h1>
   <span class="tagline">search every word said on a Twitch stream</span>
   <span class="meta" id="genMeta">loading…</span>
-  <div id="inflightWrap" style="position:relative;">
-    <button class="inflight-pill" id="inflightPill" type="button" aria-label="in-flight VOD submissions">
-      <span class="ip-dot" id="inflightDot"></span>
-      <span class="ip-stage" id="inflightStage">queued</span>
-      <span class="ip-pct" id="inflightPct"></span>
-      <span class="ip-name" id="inflightName"></span>
-    </button>
-    <div class="inflight-popover" id="inflightPopover">
-      <button class="ipdismiss" id="inflightDismissAll" title="clear completed">clear done</button>
-      <div class="iph">your submissions</div>
-      <div id="inflightList"></div>
+  <!-- Both pills live in a single cluster on the right of the topbar so the
+       auth widget never sits between them. inflight pill is anonymous-friendly
+       (localStorage-backed live progress on what you just submitted); queue
+       pill is auth-required (server-authoritative, all 20 recent submissions). -->
+  <div id="vodPills" style="display:flex;align-items:center;gap:8px;">
+    <div id="inflightWrap" style="position:relative;">
+      <button class="inflight-pill" id="inflightPill" type="button" aria-label="in-flight VOD submissions">
+        <span class="ip-dot" id="inflightDot"></span>
+        <span class="ip-stage" id="inflightStage">queued</span>
+        <span class="ip-pct" id="inflightPct"></span>
+        <span class="ip-name" id="inflightName"></span>
+      </button>
+      <div class="inflight-popover" id="inflightPopover">
+        <button class="ipdismiss" id="inflightDismissAll" title="clear completed">clear done</button>
+        <div class="iph">your submissions</div>
+        <div id="inflightList"></div>
+      </div>
     </div>
-  </div>
-  <div id="auth" class="auth-status">
-    <button id="loginBtn" hidden>log in with twitch</button>
-    <span id="userBadge" hidden>
-      <span id="userLogin">…</span>
-      <button id="logoutBtn" title="log out">log out</button>
-    </span>
-    <!-- Ambient "your VODs" queue indicator — visible only when logged in and
-         there are recent jobs attributed to this user. Polls /api/my_queue
-         every 30 s. Completing jobs trigger a brief toast notice. -->
     <div id="queuePill">
       <button id="queuePillBtn" title="your submitted VODs">
         <i data-lucide="layers">⊞</i>
@@ -885,6 +881,13 @@
       </div>
     </div>
     <div id="queueDismiss"></div>
+  </div>
+  <div id="auth" class="auth-status">
+    <button id="loginBtn" hidden>log in with twitch</button>
+    <span id="userBadge" hidden>
+      <span id="userLogin">…</span>
+      <button id="logoutBtn" title="log out">log out</button>
+    </span>
   </div>
 </header>
 <main>
