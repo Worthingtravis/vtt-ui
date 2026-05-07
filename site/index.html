@@ -784,6 +784,39 @@
     #submit .stagebar .pip.active { background: #38bdf8; animation: spulse 1.4s ease-in-out infinite; }
     #submit .stagebar .pip.past { background: #047857; }
     @keyframes spulse { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
+
+    /* In-flight submission pill — sits in the topbar, persists across page
+       loads via localStorage, polls /api/submit_status until the job is
+       terminal. Click to expand details + jump to deep link when done. */
+    .inflight-pill { display: none; align-items: center; gap: 8px; padding: 4px 10px 4px 8px; background: linear-gradient(135deg, #1e293b 0%, #14213d 100%); border: 1px solid #38bdf8; border-radius: 999px; font-size: 11px; color: #c7d2fe; cursor: pointer; transition: all 0.15s; font-variant-numeric: tabular-nums; position: relative; }
+    .inflight-pill.visible { display: inline-flex; }
+    .inflight-pill:hover { border-color: #7dd3fc; background: #1e3a5f; color: #f0f9ff; }
+    .inflight-pill .ip-dot { width: 7px; height: 7px; border-radius: 50%; background: #38bdf8; box-shadow: 0 0 8px #38bdf8; animation: ipulse 1.6s ease-in-out infinite; flex: 0 0 auto; }
+    .inflight-pill .ip-dot.done { background: #10b981; box-shadow: 0 0 8px #10b981; animation: none; }
+    .inflight-pill .ip-dot.err { background: #ef4444; box-shadow: 0 0 8px #ef4444; animation: none; }
+    .inflight-pill .ip-stage { font-weight: 500; color: #e0f2fe; }
+    .inflight-pill .ip-pct { color: #94a3b8; }
+    .inflight-pill .ip-name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #94a3b8; }
+    @keyframes ipulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(0.85); } }
+    .inflight-popover { display: none; position: absolute; top: calc(100% + 6px); right: 0; min-width: 320px; max-width: 420px; background: #0f172a; border: 1px solid #312e81; border-radius: 8px; padding: 10px; box-shadow: 0 16px 48px rgba(0,0,0,0.6); z-index: 220; }
+    .inflight-popover.open { display: block; }
+    .inflight-popover .iph { font-size: 11px; color: #94a3b8; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
+    .inflight-popover .iprow { padding: 8px 10px; background: #131a3a; border: 1px solid #1e293b; border-radius: 6px; margin-bottom: 6px; font-size: 12px; }
+    .inflight-popover .iprow:last-child { margin-bottom: 0; }
+    .inflight-popover .iprow .ipt { color: #e0f2fe; font-weight: 500; margin-bottom: 4px; word-break: break-all; }
+    .inflight-popover .iprow .ipm { color: #9ca3af; font-size: 11px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .inflight-popover .iprow .ipm .pst { color: #fde047; }
+    .inflight-popover .iprow .ipm .pdone { color: #6ee7b7; }
+    .inflight-popover .iprow .ipm .perr  { color: #fca5a5; }
+    .inflight-popover .iprow a.ipdeep { display: inline-block; margin-top: 6px; color: #e0f2fe; text-decoration: none; padding: 4px 10px; background: #0c4a6e; border: 1px solid #075985; border-radius: 4px; font-size: 11px; }
+    .inflight-popover .iprow a.ipdeep:hover { background: #0e7490; }
+    .inflight-popover .ipdismiss { background: transparent; border: 0; color: #6b7280; cursor: pointer; padding: 0 4px; font-size: 14px; float: right; }
+    .inflight-popover .ipdismiss:hover { color: #f87171; }
+    /* qPasteHint takeover when the typed URL matches an in-flight submission */
+    .qpaste-hint.matched { background: #052e1f; border-color: #047857; color: #bbf7d0; }
+    .qpaste-hint.matched .qp-text b { color: #fde047; }
+    .qpaste-hint.matched button { background: #0c4a6e; border-color: #075985; color: #e0f2fe; }
+    .qpaste-hint.matched button:hover { background: #0e7490; }
   </style>
 </head>
 <body>
@@ -791,6 +824,19 @@
   <h1>vtt — search</h1>
   <span class="tagline">search every word said on a Twitch stream</span>
   <span class="meta" id="genMeta">loading…</span>
+  <div id="inflightWrap" style="position:relative;">
+    <button class="inflight-pill" id="inflightPill" type="button" aria-label="in-flight VOD submissions">
+      <span class="ip-dot" id="inflightDot"></span>
+      <span class="ip-stage" id="inflightStage">queued</span>
+      <span class="ip-pct" id="inflightPct"></span>
+      <span class="ip-name" id="inflightName"></span>
+    </button>
+    <div class="inflight-popover" id="inflightPopover">
+      <button class="ipdismiss" id="inflightDismissAll" title="clear completed">clear done</button>
+      <div class="iph">your submissions</div>
+      <div id="inflightList"></div>
+    </div>
+  </div>
   <div id="auth" class="auth-status">
     <button id="loginBtn" hidden>log in with twitch</button>
     <span id="userBadge" hidden>
@@ -1560,15 +1606,16 @@ const ROADMAP = {
     ["deep links survive every render", "?vod=...&t=... preserved as the player moves, every play action updates the share URL"],
     ["xcorr scans stream from R2", "scanner reads audio directly from object storage — no local-cache pull required for one-shot scans"],
     ["disk auto-eviction", "every download upload also evicts oldest local VODs to keep ≥50 GB free; R2 backstops every read"],
+    ["in-flight submission pill", "topbar pill + qPasteHint takeover so a re-paste of an in-progress URL shows live status (downloading/transcribing/% done) instead of letting you queue a duplicate"],
   ],
   next: [
+    ["submitter notifications", "tag every submit with your account so closing the tab is safe — your queue and recent VODs surface on next visit"],
+    ["job-state persistence", "serve.py restarts no longer drop in-flight jobs; jobs.jsonl write-through + boot rehydrate"],
+    ["named cloudflared tunnel", "stable hostname between Pages and serve.py — no more 502 window when serve.py restarts"],
+    ["auto-scan after transcribe", "public VOD submissions get the events lane populated end-to-end without a manual click"],
     ["VOD thumbnails", "swap basenames for real Twitch preview images so VODs are scannable"],
-    ["public showcase strip", "recently-processed VODs visible pre-signin with badge counts"],
     ["🎙 my VODs", "logged-in creators see + search their own corpus (waiting on auth scope merge)"],
-    ["auto-publish from local runs", "any local pipeline run becomes a public demo without manual steps"],
     ["focused detail pages", "/clip/&lt;id&gt; and /v/&lt;creator&gt;/&lt;basename&gt; with proper share previews"],
-    ["download → scan chain", "kick off a scan on a VOD whose audio is missing → auto-queue a vodvod re-download then chain xcorr; covers VODs that were indexed before R2 mirroring or where the local cache was evicted before R2 backfill"],
-    ["fix Cloudflare Pages auto-deploy", "git push currently doesn't trigger a Pages build; deploys are landing via manual wrangler. Reconnect the GitHub integration so future feature commits ship without a manual step"],
   ],
   future: [
     ["API as a service", "paid programmatic search via x402 micropayments on Cloudflare"],
@@ -3379,7 +3426,38 @@ function syncQPasteHint() {
   const hint = $("#qPasteHint");
   if (!hint) return;
   const v = $("#q").value.trim();
-  hint.classList.toggle("visible", !!detectVodInQuery(v));
+  const det = detectVodInQuery(v);
+  if (!det) { hint.classList.remove("visible", "matched"); return; }
+  // If the typed URL matches an in-flight (or recently-completed)
+  // submission, repaint the hint as a status indicator so a re-paste of
+  // the same URL doesn't look like a fresh submit prompt.
+  const match = findInflightByUrl(v);
+  const txt = hint.querySelector(".qp-text");
+  const btn = hint.querySelector("button");
+  if (match) {
+    const lbl = inflightLabelFor(match);
+    const pct = inflightPctFor(match);
+    const sub = match.creator && match.basename ? `${match.creator}/${match.basename}` : (match.title || v);
+    hint.classList.add("matched");
+    txt.innerHTML = `${lbl.emoji} <b>${escape(lbl.txt)}</b>${pct ? ` · ${escape(pct)}` : ""} — <span style="color:#94a3b8">${escape(sub)}</span>`;
+    if (lbl.cls === "done" && match.deep_link) {
+      btn.textContent = "▶ search this VOD";
+      btn.onclick = () => { location.href = match.deep_link; };
+    } else {
+      btn.textContent = "show details";
+      btn.onclick = () => { $("#inflightPopover").classList.add("open"); };
+    }
+  } else {
+    hint.classList.remove("matched");
+    txt.innerHTML = `that looks like a <b>Twitch VOD URL</b> — want to add it to the corpus?`;
+    btn.textContent = "+ submit this VOD";
+    btn.onclick = () => {
+      const v2 = $("#q").value.trim();
+      const det2 = detectVodInQuery(v2);
+      if (det2) openSubmit(det2.url);
+    };
+  }
+  hint.classList.add("visible");
 }
 $("#q").addEventListener("input", () => {
   hideRecent();
@@ -3416,11 +3494,12 @@ $("#qclear").addEventListener("click", () => {
   clearDeepLink();
   runSearch();
 });
-$("#qPasteSubmit").addEventListener("click", () => {
-  const v = $("#q").value.trim();
-  const det = detectVodInQuery(v);
-  if (det) openSubmit(det.url);
-});
+// qPasteSubmit's click handler is set dynamically by syncQPasteHint() —
+// it flips between "+ submit this VOD" (openSubmit) and "show details"/
+// "▶ search this VOD" depending on whether the typed URL matches an
+// in-flight submission. We seed the default once here so the very first
+// page-load click before any input event still works.
+syncQPasteHint();
 $("#creator").addEventListener("change", () => {
   // Switching creator invalidates a stored deep-link target (the new
   // creator likely has different VODs). Clear before runSearch so syncUrl
@@ -3606,6 +3685,225 @@ document.addEventListener("keydown", (ev) => {
   }
 });
 
+// --- In-flight submission tracker ------------------------------------------
+// Persists pending /api/submit_vod jobs in localStorage so a tab refresh
+// (or a "wait, did I already submit this?" moment) doesn't lose them. The
+// topbar pill polls /api/submit_status for each non-terminal job; the
+// qPasteHint banner takes over when the URL the user is typing matches a
+// pending job (so re-submitting the same VOD becomes "✓ already submitting"
+// instead of a silent dupe-queue).
+const INFLIGHT_LS_KEY = "vtt_inflight_submissions_v1";
+const INFLIGHT_MAX = 8;
+const INFLIGHT_POLL_MS = 4000;
+let _inflightTimer = null;
+let _inflightPolling = false;
+
+function loadInflight() {
+  try {
+    const raw = localStorage.getItem(INFLIGHT_LS_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+function saveInflight(items) {
+  try {
+    localStorage.setItem(INFLIGHT_LS_KEY, JSON.stringify(items.slice(0, INFLIGHT_MAX)));
+  } catch {}
+}
+function recordInflightFromSubmit(resp, srcUrl) {
+  // resp is the /api/submit_vod response. status: "queued" | "already_processed".
+  const items = loadInflight();
+  if (resp.status === "already_processed") {
+    // Don't track these — they're done. But surface a brief toast on the
+    // pill so the user gets feedback that the submit closed cleanly.
+    return;
+  }
+  if (resp.status === "queued" && resp.job_id) {
+    // Replace any pre-existing entry with the same job_id, OR with the
+    // same creator+basename (a true dupe submit returns the same job_id
+    // post-dedupe; an earlier-error submit might leave an orphan).
+    const next = items.filter(it =>
+      it.job_id !== resp.job_id &&
+      !(it.creator === resp.creator && it.basename === resp.basename));
+    next.unshift({
+      job_id: resp.job_id,
+      url: srcUrl || "",
+      creator: resp.creator || "",
+      basename: resp.basename || "",
+      title: resp.title || "",
+      twitch_vod_id: resp.twitch_vod_id || "",
+      deep_link: resp.deep_link || "",
+      stage: "queued",
+      progress: {},
+      started_at: Date.now(),
+      finished_at: null,
+      kind: "polling",   // polling | done | already | error
+    });
+    saveInflight(next);
+  }
+  renderInflight();
+  ensureInflightPolling();
+}
+function findInflightByUrl(url) {
+  if (!url) return null;
+  const items = loadInflight();
+  // Match on raw URL OR extracted twitch vod id from the URL.
+  const m = url.match(TWITCH_URL_RE) || url.match(BARE_VOD_ID_RE);
+  const tid = m ? m[1] : null;
+  for (const it of items) {
+    if (it.url === url) return it;
+    if (tid && it.twitch_vod_id && String(it.twitch_vod_id) === String(tid)) return it;
+  }
+  return null;
+}
+function inflightLabelFor(it) {
+  if (it.kind === "done")    return { txt: "ready",       cls: "done", emoji: "✓" };
+  if (it.kind === "already") return { txt: "in corpus",   cls: "done", emoji: "✓" };
+  if (it.kind === "error")   return { txt: "failed",      cls: "err",  emoji: "⚠" };
+  const stage = it.stage || "queued";
+  if (stage === "downloading")  return { txt: "downloading",  cls: "", emoji: "▶" };
+  if (stage === "transcribing") return { txt: "transcribing", cls: "", emoji: "▶" };
+  if (stage === "publishing")   return { txt: "publishing",   cls: "", emoji: "▶" };
+  if (stage === "done")         return { txt: "ready",        cls: "done", emoji: "✓" };
+  return { txt: "queued", cls: "", emoji: "▶" };
+}
+function inflightPctFor(it) {
+  // Estimate rough progress when we have bytes and (optionally) total. We
+  // don't always have total; show MB only if no total. Keep it cheap.
+  const p = it.progress || {};
+  const bw = Number(p.bytes_written || 0);
+  const tot = Number(p.bytes_total || 0);
+  if (tot > 0 && bw > 0) {
+    const pct = Math.max(1, Math.min(99, Math.round((bw / tot) * 100)));
+    return `${pct}%`;
+  }
+  if (bw > 0) {
+    const mb = bw / (1024 * 1024);
+    if (mb > 1024) return `${(mb / 1024).toFixed(1)} GB`;
+    return `${mb.toFixed(0)} MB`;
+  }
+  return "";
+}
+function renderInflight() {
+  const items = loadInflight();
+  const pill = $("#inflightPill");
+  const dot = $("#inflightDot");
+  const stageEl = $("#inflightStage");
+  const pctEl = $("#inflightPct");
+  const nameEl = $("#inflightName");
+  if (!pill) return;
+  // Pick the most-recent active item to display on the pill itself.
+  const active = items.find(it => it.kind !== "done" && it.kind !== "already" && it.kind !== "error")
+              || items[0];
+  if (!active) {
+    pill.classList.remove("visible");
+    $("#inflightPopover").classList.remove("open");
+    syncQPasteHint();
+    return;
+  }
+  pill.classList.add("visible");
+  const lbl = inflightLabelFor(active);
+  dot.className = `ip-dot ${lbl.cls}`.trim();
+  stageEl.textContent = lbl.txt;
+  const pct = inflightPctFor(active);
+  pctEl.textContent = pct ? ` · ${pct}` : "";
+  const display = active.creator && active.basename
+    ? `${active.creator}/${active.basename}`
+    : (active.title || active.url || "");
+  nameEl.textContent = display;
+  pill.title = display + " — " + lbl.txt + (pct ? ` (${pct})` : "");
+
+  // Popover list of all tracked items.
+  const list = $("#inflightList");
+  list.innerHTML = items.map(it => {
+    const l = inflightLabelFor(it);
+    const p = inflightPctFor(it);
+    const lbl2 = `<span class="${l.cls === "done" ? "pdone" : l.cls === "err" ? "perr" : "pst"}">${escape(l.emoji + " " + l.txt)}</span>`;
+    const sub  = it.creator && it.basename ? escape(`${it.creator}/${it.basename}`) : escape(it.title || it.url || "");
+    const dl   = (l.cls === "done" && it.deep_link)
+      ? `<br><a class="ipdeep" href="${escape(it.deep_link)}">▶ search this VOD</a>` : "";
+    const pctSpan = p ? `<span>${escape(p)}</span>` : "";
+    return `
+      <div class="iprow">
+        <div class="ipt">${sub}</div>
+        <div class="ipm">${lbl2}${pctSpan}</div>
+        ${dl}
+      </div>`;
+  }).join("");
+
+  // Sync the qPasteHint takeover state — if the typed URL matches an
+  // in-flight item, repaint the hint as a status indicator instead of a
+  // submit CTA.
+  syncQPasteHint();
+}
+async function pollInflightOnce() {
+  const items = loadInflight();
+  if (!items.length || !RENDER_API) return false;
+  const active = items.filter(it => it.kind === "polling");
+  if (!active.length) return false;
+  let anyChange = false;
+  await Promise.all(active.map(async (it) => {
+    try {
+      const r = await fetch(`${RENDER_API}/api/submit_status?job_id=${encodeURIComponent(it.job_id)}`);
+      if (!r.ok) return;
+      const body = await r.json();
+      if (!body || !body.ok) return;
+      if (body.stage === "error" || body.status === "failed" || body.status === "cancelled") {
+        it.kind = "error"; it.stage = "error"; it.finished_at = Date.now();
+        anyChange = true;
+        return;
+      }
+      if (body.stage === "done") {
+        it.kind = "done"; it.stage = "done"; it.finished_at = Date.now();
+        if (body.deep_link) it.deep_link = body.deep_link;
+        if (body.creator) it.creator = body.creator;
+        if (body.basename) it.basename = body.basename;
+        anyChange = true;
+        return;
+      }
+      // Still in flight — capture stage + progress diff.
+      const newStage = body.stage || it.stage;
+      const newProg  = body.progress || it.progress || {};
+      if (newStage !== it.stage || JSON.stringify(newProg) !== JSON.stringify(it.progress)) {
+        it.stage = newStage; it.progress = newProg;
+        if (body.creator && !it.creator) it.creator = body.creator;
+        if (body.basename && !it.basename) it.basename = body.basename;
+        anyChange = true;
+      }
+    } catch {}
+  }));
+  if (anyChange) saveInflight(items);
+  return anyChange;
+}
+async function inflightTick() {
+  if (_inflightPolling) return;
+  _inflightPolling = true;
+  try {
+    const changed = await pollInflightOnce();
+    if (changed) renderInflight();
+  } finally {
+    _inflightPolling = false;
+  }
+}
+function ensureInflightPolling() {
+  // Schedule the next tick if there's anything still polling. When all items
+  // are terminal we let the timer go quiet — the pill itself stays mounted
+  // (so the user can click "clear done") until they dismiss.
+  const items = loadInflight();
+  const hasActive = items.some(it => it.kind === "polling");
+  if (_inflightTimer) { clearTimeout(_inflightTimer); _inflightTimer = null; }
+  if (hasActive) {
+    _inflightTimer = setTimeout(() => { inflightTick().finally(ensureInflightPolling); }, INFLIGHT_POLL_MS);
+  }
+}
+function dismissInflightDone() {
+  const items = loadInflight().filter(it => it.kind === "polling");
+  saveInflight(items);
+  renderInflight();
+  $("#inflightPopover").classList.remove("open");
+}
+
 // --- Submit-a-VOD modal -----------------------------------------------------
 const SUBMIT_STAGES = ["queued", "downloading", "transcribing", "publishing", "done"];
 let submitPoll = null;
@@ -3697,6 +3995,10 @@ async function submitGo() {
     $("#submitUrl").disabled = false;
     return;
   }
+  // Record into localStorage-backed in-flight tracker so the topbar pill +
+  // qPasteHint keep displaying status even after this modal is closed or
+  // the page is refreshed.
+  recordInflightFromSubmit(resp, url);
   // Render the initial queued response so the user sees creator/basename/title.
   renderSubmitProgress(resp, "polling");
   // Poll loop.
@@ -3731,6 +4033,28 @@ async function submitGo() {
 }
 $("#submitTrigger").addEventListener("click", () => openSubmit());
 $("#submitGo").addEventListener("click", submitGo);
+
+// Topbar in-flight pill — click toggles popover; click outside closes it.
+$("#inflightPill").addEventListener("click", (ev) => {
+  ev.stopPropagation();
+  $("#inflightPopover").classList.toggle("open");
+});
+$("#inflightDismissAll").addEventListener("click", (ev) => {
+  ev.stopPropagation();
+  dismissInflightDone();
+});
+document.addEventListener("click", (ev) => {
+  const wrap = $("#inflightWrap");
+  if (wrap && !wrap.contains(ev.target)) {
+    $("#inflightPopover").classList.remove("open");
+  }
+});
+// Render persisted state on load + start polling for any non-terminal jobs.
+renderInflight();
+ensureInflightPolling();
+// Tick once shortly after boot in case the page was opened mid-job (so the
+// first visible state isn't "queued" stale-from-localStorage).
+setTimeout(() => { inflightTick().finally(ensureInflightPolling); }, 800);
 $("#submitUrl").addEventListener("keydown", (ev) => {
   if (ev.key === "Enter") { ev.preventDefault(); submitGo(); }
 });
