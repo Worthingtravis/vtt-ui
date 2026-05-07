@@ -92,7 +92,10 @@ avail_code=$(curl -s --compressed \
   "${LOCAL}/api/vod/availability?creator=jagerzgoober&basename=2026-04-08_drops-adept-roulette-discord-user-socials-dbdcreat" \
   -o /tmp/_smoke_avail -w "%{http_code}" 2>/dev/null || echo "000")
 if [ "$avail_code" = "200" ]; then
-  if grep -qF '"available":false' /tmp/_smoke_avail && grep -qF '"has_stream_id":true' /tmp/_smoke_avail; then
+  # Python's json.dumps default emits `"key": false` (with space after :);
+  # the live response has spaces, so match with grep -E and \s* tolerance
+  # rather than literal-string grep -F which silently misses.
+  if grep -qE '"available":\s*false' /tmp/_smoke_avail && grep -qE '"has_stream_id":\s*true' /tmp/_smoke_avail; then
     ok "/api/vod/availability jagerzgoober/adept-roulette → available:false, has_stream_id:true"
   else
     bad "/api/vod/availability jagerzgoober/adept-roulette — 200 but wrong body: $(cat /tmp/_smoke_avail)"
