@@ -1745,16 +1745,31 @@ function attachTimelineHandlers() {
     });
   });
   // --- Accordion event-row clicks → seek floating player ---
+  // Two seek paths: (a) clicking anywhere in the row body (cheap), or
+  // (b) clicking the explicit ▶ play button. The button was previously
+  // a styled-only no-op because the row handler delegated to "buttons"
+  // via early-return but no .ev-play listener existed. Both routes now
+  // call the same seek function.
+  function seekFromRow(row) {
+    if (!row) return;
+    const tv = row.dataset.tv;
+    const tsec = Number(row.dataset.tsec || 0);
+    if (!tv) return;
+    $$(".ev-item.now-playing").forEach((r) => r.classList.remove("now-playing"));
+    row.classList.add("now-playing");
+    const card = row.closest(".tl-card");
+    showTwitchPlayer(card || row, tv, tsec);
+  }
   $$(".ev-item").forEach((row) => {
     row.addEventListener("click", (ev) => {
       if (ev.target.closest("a, button")) return; // let buttons handle themselves
-      const tv = row.dataset.tv;
-      const tsec = Number(row.dataset.tsec || 0);
-      if (!tv) return;
-      $$(".ev-item.now-playing").forEach((r) => r.classList.remove("now-playing"));
-      row.classList.add("now-playing");
-      const card = row.closest(".tl-card");
-      showTwitchPlayer(card || row, tv, tsec);
+      seekFromRow(row);
+    });
+  });
+  $$(".ev-item .ev-play").forEach((btn) => {
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      seekFromRow(btn.closest(".ev-item"));
     });
   });
   // --- Per-event star + share buttons (parity with list view) ---
