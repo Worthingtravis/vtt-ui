@@ -10,11 +10,10 @@ ok()   { printf "  \033[32m✓\033[0m %s\n" "$*"; }
 bad()  { printf "  \033[31m✗\033[0m %s\n" "$*"; fail=$((fail+1)); }
 hit() {
   local label="$1" url="$2" need="${3:-}"
-  local code body
+  local code
   code=$(curl -s --compressed -o /tmp/_smoke_body -w "%{http_code}" "$url" || echo "000")
-  body=$(cat /tmp/_smoke_body)
   if [ "$code" = "200" ]; then
-    if [ -z "$need" ] || echo "$body" | grep -q -- "$need"; then
+    if [ -z "$need" ] || grep -qF -- "$need" /tmp/_smoke_body; then
       ok "$label"
     else
       bad "$label — 200 but missing pattern: $need"
