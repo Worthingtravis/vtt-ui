@@ -332,6 +332,10 @@
     .vod-group .vg-children .row.vod { background: #0f172a; border-color: #1f2937; }
     /* event-search mode UI */
     .event-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 12px; padding: 8px 0; align-items: center; }
+    /* `.event-chips { display: flex }` was beating the [hidden] attribute
+       (same specificity, source order wins), so the chip row stayed visible
+       in mode=all where the chips can't filter anything. Explicit override. */
+    .event-chips[hidden] { display: none; }
     .event-chips .chip-label { color: #6b7280; font-size: 11px; text-transform: uppercase; letter-spacing: .05em; margin-right: 4px; }
     .event-chips .chip { background: #1e293b; border: 1px solid #334155; color: #cbd5e1; padding: 5px 12px; border-radius: 16px; font-size: 12px; cursor: pointer; font-family: inherit; display: inline-flex; align-items: center; gap: 6px; transition: background .12s, border-color .12s; }
     .event-chips .chip:hover { background: #2a3950; border-color: #475569; }
@@ -460,6 +464,59 @@
     .vod-group-header .vg-twitch [data-lucide], .vod-group-header .vg-twitch svg.lucide { width: 12px; height: 12px; }
     .vod-group-body > .row { border-radius: 0; border-left: 0; border-right: 0; border-top: 0; }
     .vod-group-body > .row:last-child { border-bottom: 0; }
+    /* List-view event row (.evr) — single horizontal lane:
+       class pill | time | score bar | score num | ▶ ↗ | 👍 👎 ⭐ 🔗
+       Shares visual language with the accordion ev-item but lives directly
+       under a .vod-group-header (so the title/basename aren't repeated
+       per row). The .micro override below makes the vote group inline
+       instead of absolute-positioned over the action buttons. */
+    .row.evr { display: grid; grid-template-columns: minmax(120px, 180px) 80px 1fr 44px auto auto; align-items: center; gap: 14px; padding: 10px 16px; background: var(--bg-1); border: 0; border-bottom: 1px solid var(--line-soft); border-radius: 0; margin: 0; cursor: default; min-height: 44px; }
+    .vod-group-body > .row.evr:last-child { border-bottom: 0; }
+    .row.evr:hover { background: var(--bg-2); }
+    .row.evr.now-playing { background: rgba(56,189,248,.07); box-shadow: inset 3px 0 0 var(--accent); }
+    .row.evr .evr-cls { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px 4px 8px; background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: 999px; font: 500 11px var(--font-display); color: var(--ink-1); letter-spacing: -0.005em; min-width: 0; }
+    .row.evr .evr-cls-dot { width: 7px; height: 7px; background: var(--c, var(--ink-3)); border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 2px rgba(0,0,0,.3); }
+    .row.evr .evr-cls-name { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .row.evr .evr-when { font: 500 13px var(--font-mono); color: var(--accent); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; text-align: left; }
+    .row.evr .evr-score-bar { display: inline-block; width: 100%; height: 4px; background: var(--bg-3); border-radius: 2px; overflow: hidden; }
+    .row.evr .evr-score-bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--ink-3), var(--accent)); border-radius: 2px; }
+    .row.evr .evr-score-num { font: 500 11px var(--font-mono); color: var(--ink-3); font-variant-numeric: tabular-nums; text-align: right; letter-spacing: -0.02em; }
+    .row.evr .evr-actions { display: inline-flex; align-items: center; gap: 6px; }
+    .row.evr .evr-play { background: linear-gradient(135deg, #7d5bbe 0%, #6441a5 100%); border: 0; color: #f3e8ff; font-size: 12px; padding: 7px 11px; border-radius: 6px; cursor: pointer; min-width: 34px; min-height: 32px; display: inline-flex; align-items: center; justify-content: center; transition: transform .1s, box-shadow .1s; box-shadow: 0 2px 8px -4px rgba(125, 91, 190, .6); font-family: inherit; }
+    .row.evr .evr-play:hover { transform: translateY(-1px); box-shadow: 0 4px 12px -4px rgba(125, 91, 190, .8); }
+    .row.evr .evr-twitch { background: transparent; border: 1px solid var(--line); color: var(--ink-2); font-size: 12px; padding: 7px 11px; border-radius: 6px; text-decoration: none; line-height: 1; min-width: 34px; min-height: 32px; display: inline-flex; align-items: center; justify-content: center; transition: color .12s, border-color .12s; }
+    .row.evr .evr-twitch:hover { color: var(--accent); border-color: var(--accent); }
+    .row.evr .evr-no-tv { font: 400 11px var(--font-mono); color: var(--ink-3); padding: 7px 0; }
+    .row.evr .evr-play [data-lucide], .row.evr .evr-play svg.lucide,
+    .row.evr .evr-twitch [data-lucide], .row.evr .evr-twitch svg.lucide { width: 14px; height: 14px; }
+    /* Override the absolute-positioned .micro for event rows so the vote/
+       star/share group docks INLINE at the end of the row instead of
+       overlaying the play here button at top: 8px / right: 8px. */
+    .row.evr .micro { position: static; display: inline-flex; gap: 4px; align-items: center; padding-left: 10px; border-left: 1px solid var(--line-soft); margin: 0; z-index: auto; }
+    .row.evr .micro button { background: transparent; border: 1px solid transparent; color: var(--ink-3); font-size: 14px; padding: 5px 8px; border-radius: 5px; cursor: pointer; min-width: 32px; min-height: 30px; line-height: 1; display: inline-flex; align-items: center; justify-content: center; transition: color .12s, background .12s, border-color .12s; }
+    .row.evr .micro button:hover { color: var(--ink-1); background: var(--bg-3); }
+    .row.evr .micro button[data-act="up"]:hover { color: var(--good); background: rgba(16,185,129,.12); border-color: var(--good); }
+    .row.evr .micro button[data-act="down"]:hover { color: var(--bad); background: rgba(239,68,68,.12); border-color: var(--bad); }
+    .row.evr .micro button[data-act="star"]:hover { color: var(--gold); background: rgba(202,138,4,.12); border-color: var(--gold); }
+    .row.evr .micro button[data-act="share"]:hover { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+    .row.evr .micro button[data-act="up"].voted { color: var(--good); border-color: var(--good); background: rgba(16,185,129,.18); }
+    .row.evr .micro button[data-act="down"].voted { color: var(--bad); border-color: var(--bad); background: rgba(239,68,68,.18); }
+    .row.evr .micro button.starred { color: var(--gold); border-color: var(--gold); }
+    .row.evr .micro button.vote-locked { opacity: 0.45; }
+    .row.evr .micro button.vote-locked:hover { opacity: 0.85; }
+    @media (max-width: 720px) {
+      .row.evr {
+        display: flex; flex-wrap: wrap; align-items: center;
+        column-gap: 8px; row-gap: 6px;
+        padding: 10px 12px;
+      }
+      .row.evr .evr-cls { flex: 0 0 auto; }
+      .row.evr .evr-when { flex: 0 0 auto; }
+      .row.evr .evr-score-bar { flex: 1 1 60px; min-width: 50px; }
+      .row.evr .evr-score-num { flex: 0 0 32px; }
+      .row.evr .evr-actions { flex: 0 0 auto; margin-left: auto; }
+      .row.evr .micro { flex: 0 0 100%; padding-left: 0; border-left: 0; border-top: 1px dashed var(--line-soft); padding-top: 8px; margin-top: 2px; justify-content: flex-end; }
+    }
     /* Invisible reserved-space marker that the anchored player docks into.
        Lives inside the active VOD's card/group, sized at runtime to the
        player's current height. Pure layout — no border, no background. */
@@ -1982,42 +2039,39 @@ function renderEventChips(counts) {
 
 function eventRow(e) {
   // e: {c, b, e (class), t, s (peak_score), tv?, title?}
+  // List-view event row — single horizontal lane that mirrors the accordion
+  // ev-item layout. Title / basename are intentionally NOT repeated here
+  // because the .vod-group-header above already shows them; repeating once
+  // per event row was wasting ~80px of vertical space per hit and made the
+  // page feel like a card stack instead of a track listing.
   const meta = eventLabel(e.e);
-  const title = e.title || e.b;
+  const color = EVENT_COLORS[e.e] || "#94a3b8";
   const twitchTime = twitchTimeArg(e.t);
-  const tvActions = e.tv
-    ? `<button data-twitch="1" title="embed the twitch player below this row, scrubbed to ${fmtT(e.t)}"><i data-lucide="play">▶</i> play here</button>
-       <a class="twitchExt" target="_blank" rel="noopener"
-          href="https://www.twitch.tv/videos/${encodeURIComponent(e.tv)}?t=${twitchTime}"
-          title="open this VOD on twitch.tv at ${fmtT(e.t)} in a new tab"><i data-lucide="external-link">↗</i> open on twitch.tv</a>`
-    : `<span class="meta" style="font-size:11px;color:#6b7280;padding:4px 10px;">no twitch link</span>`;
-  const tvPlayerEl = e.tv
-    ? `<div class="player twitch-player" data-tv="${escape(e.tv)}" data-time="${twitchTime}" data-tsec="${e.t}"></div>`
-    : "";
-  // Score bar: peak_score normally lands 0.10–0.50 for real hits. Cap
-  // at 0.5 so the bar fills visibly without losing top-end resolution.
   const scorePct = Math.min(100, Math.max(0, (e.s / 0.5) * 100));
   const h = { kind: "event", rec: e };
+  const tvActionsInline = e.tv
+    ? `<button class="evr-play" data-twitch="1" title="play here at ${fmtT(e.t)}"><i data-lucide="play">▶</i></button>
+       <a class="evr-twitch" target="_blank" rel="noopener"
+          href="https://www.twitch.tv/videos/${encodeURIComponent(e.tv)}?t=${twitchTime}"
+          title="open on twitch.tv at ${fmtT(e.t)}"><i data-lucide="external-link">↗</i></a>`
+    : `<span class="evr-no-tv">no twitch</span>`;
+  // Hidden mount point for the togglePlayer machinery — kept so .vod-row
+  // closest() lookups continue to find the data-tv / data-tsec needed by
+  // the showTwitchPlayer call.
+  const tvPlayerEl = e.tv
+    ? `<div class="player twitch-player" data-tv="${escape(e.tv)}" data-time="${twitchTime}" data-tsec="${e.t}" hidden></div>`
+    : "";
   return `
-    <div class="row event vod-row" data-key="${escape(hitKey(h))}">
+    <div class="row event evr vod-row" data-key="${escape(hitKey(h))}">
+      <span class="evr-cls" style="--c:${color}" title="${escape(meta.name)}">
+        <span class="evr-cls-dot"></span>
+        <span class="evr-cls-name">${escape(meta.name)}</span>
+      </span>
+      <span class="evr-when">@ ${fmtT(e.t)}</span>
+      <span class="evr-score-bar" title="confidence ${e.s.toFixed(3)}"><span style="width:${scorePct}%"></span></span>
+      <span class="evr-score-num">${e.s.toFixed(2)}</span>
+      <span class="evr-actions">${tvActionsInline}</span>
       ${microButtons(h)}
-      <div class="head">
-        <div class="ev-thumb" title="thumbnail coming soon">${meta.emoji}</div>
-        <div class="ev-body">
-          <span class="creator"><span class="badge">event</span>${escape(e.c)}</span>
-          <span class="ev-class">${meta.emoji} ${escape(meta.name)}</span>
-          <div>
-            <span class="ev-when">@ ${fmtT(e.t)}</span>
-            <span class="ev-score" title="confidence (peak xcorr score = ${e.s.toFixed(3)})"><span class="ev-score-fill" style="width:${scorePct}%"></span></span>
-            <span class="ev-score-num">${e.s.toFixed(2)}</span>
-          </div>
-          <div class="ev-title">${escape(title)}</div>
-          <div class="ev-meta">${escape(e.b)}</div>
-        </div>
-        <div class="actions">
-          ${tvActions}
-        </div>
-      </div>
       ${tvPlayerEl}
     </div>`;
 }
