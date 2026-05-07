@@ -327,7 +327,7 @@
     .tl-vod-meta { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; }
     .tl-vod-meta .creator { color: #a5b4fc; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; flex-shrink: 0; }
     .tl-vod-meta .creator .badge { background: #4338ca; color: #e0e7ff; padding: 1px 6px; border-radius: 3px; margin-right: 6px; font-size: 9px; }
-    .tl-title { color: #e0e7ff; font-size: 13px; font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .tl-title { color: #e0e7ff; font-size: 13px; font-weight: 500; min-width: 0; overflow-wrap: anywhere; word-break: break-word; line-height: 1.3; }
     .tl-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
     .tl-count { color: #94a3b8; font-size: 11px; padding: 2px 8px; background: #1e293b; border-radius: 10px; }
     .tl-track { position: relative; height: 38px; background: #131a3a; border: 1px solid #1f2937; border-radius: 4px; }
@@ -349,7 +349,7 @@
     .vod-group-header { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: #131a3a; border-bottom: 1px solid #1f2937; min-height: 32px; }
     .vod-group-header .creator { color: #a5b4fc; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; flex-shrink: 0; }
     .vod-group-header .creator .badge { background: #4338ca; color: #e0e7ff; padding: 1px 6px; border-radius: 3px; margin-right: 6px; font-size: 9px; }
-    .vod-group-header .title { color: #e0e7ff; font-size: 13px; font-weight: 500; min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .vod-group-header .title { color: #e0e7ff; font-size: 13px; font-weight: 500; min-width: 0; flex: 1; overflow-wrap: anywhere; word-break: break-word; line-height: 1.3; }
     .vod-group-header .vg-count { color: #94a3b8; font-size: 11px; padding: 2px 8px; background: #1e293b; border-radius: 10px; flex-shrink: 0; }
     .vod-group-header .vg-twitch { color: #7dd3fc; font-size: 11px; text-decoration: none; flex-shrink: 0; }
     .vod-group-header .vg-twitch:hover { text-decoration: underline; }
@@ -391,12 +391,18 @@
     .ev-item { display: grid; grid-template-columns: 70px 1fr 32px auto auto auto; align-items: center; gap: 6px; padding: 5px 10px; font-size: 12px; border-top: 1px solid #1f2937; cursor: pointer; }
     .ev-item-actions { display: inline-flex; gap: 2px; align-items: center; }
     .ev-item .ev-meta-btn { background: transparent; border: 1px solid #1f2937; color: #6b7280; font-size: 11px; padding: 3px 6px; border-radius: 4px; cursor: pointer; min-width: 0; line-height: 1.3; font-family: inherit; }
-    .ev-item .ev-meta-btn:hover { color: #fde047; border-color: #fde047; background: rgba(202, 138, 4, 0.1); }
-    .ev-item .ev-star.starred { color: #fde047; border-color: #fde047; }
-    .ev-item .ev-up.voted { color: #6ee7b7; border-color: #6ee7b7; background: rgba(16, 185, 129, 0.12); }
-    .ev-item .ev-up:hover { color: #6ee7b7; border-color: #6ee7b7; background: rgba(16, 185, 129, 0.1); }
-    .ev-item .ev-down.voted { color: #fca5a5; border-color: #fca5a5; background: rgba(239, 68, 68, 0.12); }
-    .ev-item .ev-down:hover { color: #fca5a5; border-color: #fca5a5; background: rgba(239, 68, 68, 0.1); }
+    /* Default hover for action buttons (star / share / play / twitch) is
+       neutral cyan-grey. Vote buttons override below with semantic colors
+       (green for up, red for down) — bumped specificity via the chained
+       .ev-meta-btn class so source-order ties are won unambiguously. */
+    .ev-item .ev-meta-btn:hover { color: #cbd5e1; border-color: #475569; background: rgba(71, 85, 105, 0.15); }
+    .ev-item .ev-meta-btn.ev-star:hover { color: #fde047; border-color: #fde047; background: rgba(202, 138, 4, 0.12); }
+    .ev-item .ev-meta-btn.ev-share:hover { color: #7dd3fc; border-color: #7dd3fc; background: rgba(56, 189, 248, 0.12); }
+    .ev-item .ev-meta-btn.ev-star.starred { color: #fde047; border-color: #fde047; }
+    .ev-item .ev-meta-btn.ev-up.voted { color: #6ee7b7; border-color: #6ee7b7; background: rgba(16, 185, 129, 0.18); }
+    .ev-item .ev-meta-btn.ev-up:hover { color: #6ee7b7; border-color: #6ee7b7; background: rgba(16, 185, 129, 0.12); }
+    .ev-item .ev-meta-btn.ev-down.voted { color: #fca5a5; border-color: #fca5a5; background: rgba(239, 68, 68, 0.18); }
+    .ev-item .ev-meta-btn.ev-down:hover { color: #fca5a5; border-color: #fca5a5; background: rgba(239, 68, 68, 0.12); }
     /* Anonymous viewers: vote buttons stay clickable so they can discover
        the affordance, but are dimmed and the click triggers a log-in toast
        instead of submitting. Distinct from disabled because we want them
