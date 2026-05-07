@@ -328,6 +328,16 @@
        Lives inside the active VOD's card/group, sized at runtime to the
        player's current height. Pure layout — no border, no background. */
     .player-spacer { width: 100%; }
+    /* Default-browse view (mode=vod or mode=all + creator) reuses .vod-group
+       chrome with extra header pills (date, duration) + an event-counts chip
+       row in the body slot instead of event rows. */
+    .vod-group-header .vg-date { color: #cbd5e1; font-size: 11px; padding: 2px 8px; background: #1e293b; border-radius: 10px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+    .vod-group-header .vg-dur { color: #94a3b8; font-size: 11px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+    .browse-evchips { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 14px; }
+    .browse-evchip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; background: #131a3a; border: 1px solid #1f2937; border-radius: 10px; color: #e0e7ff; font-size: 11px; }
+    .browse-evchip::before { content: ""; display: inline-block; width: 6px; height: 6px; background: var(--c, #94a3b8); border-radius: 50%; }
+    .browse-evchip-none { color: #6b7280; background: transparent; border: 1px dashed #1f2937; }
+    .browse-evchip-none::before { background: transparent; }
     /* Per-class accordion sections inside each VOD card. Drill down from
        the timeline overview into the actual list of events without leaving
        the card. Each section gets its own sort + score-filter controls. */
@@ -766,6 +776,31 @@ async function loadEventsForVod(v) {
     return { events, duration };
   } catch { return { events: [], duration: null }; }
 }
+// Cached per-VOD event counts ("creator/basename" -> {count, byClass, duration}).
+// Used by the default-browse view to badge each VOD with its event totals
+// without firing N parallel /api/events requests.
+let _allEventsIndexCache = null;
+async function loadAllEventsIndex() {
+  if (_allEventsIndexCache !== null) return _allEventsIndexCache;
+  try {
+    const r = await fetch(`/api/events?limit=5000`);
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    const d = await r.json();
+    const byVod = new Map();
+    for (const h of (d.hits || [])) {
+      const e = h.rec || h;
+      const key = `${e.c}/${e.b}`;
+      if (!byVod.has(key)) byVod.set(key, { count: 0, byClass: {}, title: e.title || "" });
+      const slot = byVod.get(key);
+      slot.count += 1;
+      slot.byClass[e.e] = (slot.byClass[e.e] || 0) + 1;
+    }
+    _allEventsIndexCache = { byVod, durations: d.vod_durations || {} };
+  } catch {
+    _allEventsIndexCache = { byVod: new Map(), durations: {} };
+  }
+  return _allEventsIndexCache;
+}
 const STAR_KEY = "vtt_starred_v1";
 const RECENT_KEY = "vtt_recent_v1";
 const RECENT_MAX = 8;
@@ -863,6 +898,7 @@ const ROADMAP = {
     ["🎯 event search", "find specific in-game DBD moments — match start/end, gen popped, survivor on hook"],
     ["docked twitch player", "playback panel anchors above the active VOD's timeline (or list-view group) instead of floating bottom-right"],
     ["list-view VODs grouped", "events list buckets by VOD with a header bar that doubles as the player anchor"],
+    ["default browse view", "every mode/creator combo shows VODs with date, duration, and per-class event chips instead of an empty landing"],
   ],
   next: [
     ["VOD thumbnails", "swap basenames for real Twitch preview images so VODs are scannable"],
@@ -1069,6 +1105,15 @@ async function runSearch() {
   }
 
   if (!q && mode !== "clip") {
+    // Empty-query fallback. Originally this dropped to the landing card no
+    // matter what — but with creator selected (or vod mode), users expect to
+    // see that creator's content immediately, not the home page. Route to a
+    // VOD-browse view in those cases; only the global "all + no creator"
+    // path keeps the landing as the default home.
+    if (mode === "vod" || creator) {
+      await runDefaultBrowse(creator, mode, reqId);
+      return;
+    }
     renderLanding();
     $("#count").textContent = "—";
     state.lastHits = [];
@@ -1102,6 +1147,77 @@ async function runSearch() {
   }
   state.lastHits = hits;
   renderHits(hits, tokens);
+}
+
+// Default-browse view — what `mode=vod` and `creator-selected mode=all`
+// drop into when there's no query. Lists every VOD with badges showing
+// duration, transcript segments, and per-class event counts. Each card
+// is a clickable hop into events-mode for that VOD and a hop into
+// transcript search for that creator.
+async function runDefaultBrowse(creator, mode, reqId) {
+  $("#eventChips").hidden = true;
+  // Both indexes in parallel — events is optional decoration, missing rows
+  // just skip the count badges.
+  const [vods, evIdx] = await Promise.all([loadAllVodsIndex(), loadAllEventsIndex()]);
+  if (reqId !== lastReq) return;
+  const filtered = creator ? vods.filter((v) => v.c === creator) : vods;
+  // Newest first — basenames are date-prefixed (YYYY-MM-DD_…) so a localeCompare
+  // descending sort orders correctly for any practical span.
+  filtered.sort((a, b) => (b.b || "").localeCompare(a.b || ""));
+  const totalEvents = filtered.reduce((s, v) => s + (evIdx.byVod.get(`${v.c}/${v.b}`)?.count || 0), 0);
+  $("#count").textContent = `${filtered.length} VOD${filtered.length === 1 ? "" : "s"}${creator ? " · " + escape(creator) : ""}${totalEvents ? ` · ${totalEvents} events indexed` : ""}`;
+  if (!filtered.length) {
+    $("#results").innerHTML = `<div class="empty">no VODs ${creator ? "for " + escape(creator) : "in the corpus yet"} · type a phrase to search transcripts, or paste a Twitch URL above to add one</div>`;
+    state.lastHits = [];
+    return;
+  }
+  $("#results").innerHTML = filtered.map((v) => browseVodCard(v, evIdx)).join("");
+  refreshIcons();
+  state.lastHits = [];
+  state.focusIdx = -1;
+}
+
+function browseVodCard(v, evIdx) {
+  const slot = evIdx.byVod.get(`${v.c}/${v.b}`) || { count: 0, byClass: {}, title: "" };
+  const duration = evIdx.durations[`${v.c}/${v.b}`] || null;
+  const title = slot.title || v.b;
+  const dateMatch = (v.b || "").match(/^(\d{4}-\d{2}-\d{2})/);
+  const datePill = dateMatch ? `<span class="vg-date">${dateMatch[1]}</span>` : "";
+  const durPill = duration ? `<span class="vg-dur" title="VOD duration">${fmtT(duration)}</span>` : "";
+  const tvLink = v.tv
+    ? `<a class="vg-twitch" href="https://www.twitch.tv/videos/${encodeURIComponent(v.tv)}" target="_blank" rel="noopener" title="open VOD on twitch.tv"><i data-lucide="external-link">↗</i> on twitch.tv</a>`
+    : "";
+  // Event-count chips per class — pull from the index so we don't trigger N
+  // network requests just to render the browse list.
+  const eventChips = slot.count
+    ? EVENT_LABELS_ORDER
+        .filter((cls) => slot.byClass[cls])
+        .map((cls) => {
+          const meta = eventLabel(cls);
+          return `<span class="browse-evchip" style="--c:${EVENT_COLORS[cls] || "#94a3b8"}" title="${escape(meta.name)}">${meta.emoji} ${slot.byClass[cls]}</span>`;
+        }).join("")
+    : `<span class="browse-evchip browse-evchip-none">no events scanned yet</span>`;
+  // Both jumps preserve the active creator/VOD into the destination mode's
+  // URL — events deep-link uses ?vod= so the existing detail-card path picks
+  // it up; search jumps to all-mode pre-filtered to the creator.
+  const hopEvents = v.tv || slot.count
+    ? `<a class="vg-twitch" href="?mode=event&creator=${encodeURIComponent(v.c)}" title="see this creator's events"><i data-lucide="target">🎯</i> events</a>`
+    : "";
+  const hopVod = `<a class="vg-twitch" href="?vod=${encodeURIComponent(v.c + "/" + v.b)}" title="open this VOD's detail page"><i data-lucide="search">→</i> open</a>`;
+  return `
+    <div class="vod-group browse-vod" data-creator="${escape(v.c)}" data-basename="${escape(v.b)}" data-tv="${escape(v.tv || "")}">
+      <div class="vod-group-header">
+        <span class="creator"><span class="badge">VOD</span>${escape(v.c)}</span>
+        ${datePill}
+        <span class="title" title="${escape(title)}">${escape(title)}</span>
+        ${durPill}
+        <span class="vg-count">${slot.count} event${slot.count === 1 ? "" : "s"}</span>
+        ${tvLink}
+        ${hopEvents}
+        ${hopVod}
+      </div>
+      <div class="vod-group-body browse-evchips">${eventChips}</div>
+    </div>`;
 }
 
 function renderSaved(creator) {
