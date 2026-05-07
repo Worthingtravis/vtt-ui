@@ -1172,10 +1172,12 @@ async function renderVodDetailCard(creator, basename, t) {
 
 function renderVodNoEventsPanel(v) {
   // Surfaced under the VOD detail card when no xc_*.json sidecars exist.
-  // The button is now wired — auth-gated POST /api/scan/queue kicks the
-  // xcorr scan on the local backend. The card swaps into a "scan
-  // running" view that polls /api/scan/status until done, then refreshes.
-  const authed = !!(state.session && state.session.authenticated);
+  // The button is always rendered "ready" — the auth check happens at
+  // click-time so that a /api/auth/me round-trip racing the initial
+  // render doesn't leave the button stuck in a "log in" state for
+  // already-authed users (which is exactly what happened pre-fix:
+  // bootFromUrl rendered the panel before refreshAuth populated
+  // state.session, so the gate read false-anon).
   return `
     <div class="ne-card" data-creator="${escape(v.c)}" data-basename="${escape(v.b)}">
       <div class="ne-stripe"></div>
@@ -1196,12 +1198,10 @@ function renderVodNoEventsPanel(v) {
           <span class="ne-cls" style="--c:#fb923c">match queued</span>
         </div>
         <div class="ne-actions">
-          <button class="ne-cta ne-scan-btn" type="button" ${authed ? "" : "data-needs-auth=\"1\""}>
+          <button class="ne-cta ne-scan-btn" type="button">
             <i data-lucide="zap">⚡</i> kick off a scan
           </button>
-          <span class="ne-cta-note">${authed
-            ? "Runs locally in ~5 min per 5 h VOD · publishes back here when done."
-            : "Log in to queue a scan — feedback + scan kicks are gated to logged-in users."}</span>
+          <span class="ne-cta-note">Runs locally in ~5 min per 5 h VOD · publishes back here when done.</span>
         </div>
         <div class="ne-progress" hidden>
           <div class="ne-progress-bar"><div class="ne-progress-fill"></div></div>
@@ -1276,10 +1276,6 @@ function attachScanKickHandlers(v) {
 
   btn.addEventListener("click", async (ev) => {
     ev.preventDefault();
-    if (btn.dataset.needsAuth === "1") {
-      toast("log in to queue a scan");
-      return;
-    }
     btn.disabled = true;
     btn.innerHTML = `<i data-lucide="loader">⏳</i> queueing…`;
     refreshIcons();
@@ -1290,7 +1286,14 @@ function attachScanKickHandlers(v) {
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ creator: v.c, basename: v.b }),
       });
-      if (r.status === 401) { setError("log in to queue scans"); toast("log in to queue scans"); return; }
+      if (r.status === 401) {
+        // Backend gate fired — authoritative signal regardless of what
+        // state.session looks like in the SPA. Bounce through the OAuth
+        // round-trip and return to this exact deep link.
+        const ret = location.pathname + location.search;
+        location.href = "/api/auth/login?returnTo=" + encodeURIComponent(ret);
+        return;
+      }
       const d = await r.json().catch(() => ({}));
       if (!r.ok || !d.ok || !d.job_id) {
         setError(d.error || `HTTP ${r.status}`);
