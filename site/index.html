@@ -407,6 +407,33 @@
     .row .cut-failed { color: #6b7280; font-size: 11px; padding: 4px 8px; background: #1f1f1f; border: 1px dashed #374151; border-radius: 4px; font-style: italic; cursor: default; }
     .events-empty { padding: 32px 16px; text-align: center; color: #9ca3af; }
     .events-empty .ee-help { font-size: 12px; color: #6b7280; margin-top: 8px; }
+    /* Rich empty-state — used when filters returned 0 hits. Lays out a
+       headline, an explanation of why events mode + a transcript word
+       returned nothing, the active filters as a removable chip strip,
+       then a stack of cross-mode CTAs. Each CTA is a full-width tappable
+       row (mobile-friendly), with an icon, label, and a tiny hint line. */
+    .events-empty-rich { padding: 28px 18px 32px; text-align: left; max-width: 720px; margin: 0 auto; background: var(--bg-1); border: 1px solid var(--line); border-radius: 14px; }
+    .events-empty-rich .ee-head { font: 600 17px var(--font-display); color: var(--ink-0); letter-spacing: -0.015em; text-align: center; }
+    .events-empty-rich .ee-sub { color: var(--ink-2); font-size: 13px; margin-top: 8px; line-height: 1.5; text-align: center; }
+    .events-empty-rich .ee-active { margin-top: 22px; padding: 14px 16px; background: var(--bg-2); border: 1px dashed var(--line); border-radius: 10px; }
+    .events-empty-rich .ee-active-label { display: block; font: 500 10px var(--font-mono); text-transform: uppercase; letter-spacing: 0.08em; color: var(--ink-3); margin-bottom: 10px; }
+    .events-empty-rich .ee-active-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+    .ee-filter-chip { display: inline-flex; align-items: center; gap: 7px; padding: 6px 10px 6px 11px; background: var(--bg-3); border: 1px solid var(--line); border-radius: 999px; color: var(--ink-1); font: 500 12px var(--font-mono); cursor: pointer; transition: background .12s, border-color .12s, color .12s; }
+    .ee-filter-chip:hover { background: rgba(239,68,68,.10); border-color: var(--bad); color: var(--ink-0); }
+    .ee-filter-chip:hover .ee-fc-x { color: var(--bad); }
+    .ee-fc-icon { font-size: 11px; }
+    .ee-fc-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 2px rgba(0,0,0,.3); }
+    .ee-fc-x { font-size: 14px; color: var(--ink-3); margin-left: 2px; line-height: 1; }
+    .events-empty-rich .ee-ctas { margin-top: 22px; display: flex; flex-direction: column; gap: 8px; }
+    .ee-cta { display: flex; align-items: center; gap: 14px; width: 100%; padding: 12px 16px; background: var(--bg-2); border: 1px solid var(--line); border-radius: 10px; color: var(--ink-0); cursor: pointer; text-align: left; font-family: inherit; transition: background .14s, border-color .14s, transform .1s; }
+    .ee-cta:hover { background: var(--accent-soft); border-color: var(--accent); transform: translateX(2px); }
+    .ee-cta-icon { font-size: 18px; flex-shrink: 0; width: 28px; text-align: center; }
+    .ee-cta-body { display: flex; flex-direction: column; gap: 3px; flex: 1; min-width: 0; }
+    .ee-cta-label { font: 500 13px var(--font-display); color: var(--ink-0); letter-spacing: -0.005em; }
+    .ee-cta-hint { font: 400 11px var(--font-mono); color: var(--ink-3); }
+    .ee-cta:hover .ee-cta-label { color: var(--accent); }
+    .ee-cta-arrow { color: var(--ink-3); font-size: 16px; flex-shrink: 0; transition: color .14s, transform .14s; }
+    .ee-cta:hover .ee-cta-arrow { color: var(--accent); transform: translateX(3px); }
     /* Timeline view — per-VOD card with horizontal canvas of color-coded
        event ticks. Click a tick = floating-player seek to that second.
        Same hits, different mental model: instead of 1742 list rows you
@@ -1764,13 +1791,25 @@ async function runEventSearch(creator, reqId) {
   $("#count").textContent = `${filteredCount} of ${resp.n_total} event${resp.n_total === 1 ? "" : "s"} · ${escape(filterLabel)}${creator ? " · " + escape(creator) : ""}${qFilter ? " · matches \"" + escape(qFilter) + "\"" : ""}`;
   if (!filteredHits.length) {
     const noFilters = state.eventFilters.size === 0 && !creator && !qFilter;
-    $("#results").innerHTML = `
-      <div class="events-empty">
-        <div>${noFilters ? "no events in the public index yet" : "no matches with current filters"}</div>
-        <div class="ee-help">${noFilters
-          ? `index covers <b>${resp.classes?.length || 5}</b> in-game DBD SFX classes — pop a chip above to start narrowing`
-          : "try removing a chip, clearing the search box, or switching creators"}</div>
-      </div>`;
+    if (noFilters) {
+      $("#results").innerHTML = `
+        <div class="events-empty">
+          <div>no events in the public index yet</div>
+          <div class="ee-help">index covers <b>${resp.classes?.length || 5}</b> in-game DBD SFX classes — pop a chip above to start narrowing</div>
+        </div>`;
+    } else {
+      // Filtered-empty: enumerate the active filters as removable chips
+      // and offer mode-switch CTAs so the user can take a one-click escape
+      // hatch instead of guessing which knob to twiddle. The earlier
+      // "try removing a chip" copy was generic and ignored the most common
+      // intent ("I typed 'surviv', I want transcript matches") — events
+      // mode searches VOD titles, not transcripts, and we should say so
+      // out loud and offer the transcript route directly.
+      $("#results").innerHTML = renderEventsFilteredEmpty({
+        creator, qFilter, totalEvents: resp.n_total,
+      });
+      attachEventsEmptyHandlers();
+    }
     state.lastHits = [];
     return;
   }
@@ -1786,6 +1825,132 @@ async function runEventSearch(creator, reqId) {
     attachRowHandlers();
   }
   state.focusIdx = -1;
+}
+
+// --- Events-mode "no matches" panel ---------------------------------------
+// Replaces the generic "try removing a chip" copy with a structured panel:
+// (1) which filters are currently active, each as a removable × chip
+// (2) cross-mode escape hatches phrased around what the user probably
+//     meant. Most common case: they typed a transcript word in events
+//     mode, expected hits, got zero. The CTA "→ search transcripts for
+// 'surviv' across jagerzgoober" lands them in the right mode in one click.
+function renderEventsFilteredEmpty({ creator, qFilter, totalEvents }) {
+  const chips = [];
+  if (qFilter) {
+    chips.push(`<button class="ee-filter-chip" data-clear="q" title="clear the search box">
+      <span class="ee-fc-icon">🔎</span>"${escape(qFilter)}"<span class="ee-fc-x">×</span></button>`);
+  }
+  if (creator) {
+    chips.push(`<button class="ee-filter-chip" data-clear="creator" title="clear creator filter">
+      <span class="ee-fc-icon">👤</span>${escape(creator)}<span class="ee-fc-x">×</span></button>`);
+  }
+  for (const cls of state.eventFilters) {
+    const meta = eventLabel(cls);
+    const color = EVENT_COLORS[cls] || "#94a3b8";
+    chips.push(`<button class="ee-filter-chip" data-clear="chip" data-cls="${escape(cls)}" title="remove ${escape(meta.name)} chip">
+      <span class="ee-fc-dot" style="background:${color}"></span>${escape(meta.name)}<span class="ee-fc-x">×</span></button>`);
+  }
+
+  const ctas = [];
+  if (qFilter) {
+    const where = creator ? `in ${escape(creator)}` : "across all creators";
+    ctas.push({
+      action: "transcripts",
+      icon: "📜",
+      label: `search transcripts for &ldquo;${escape(qFilter)}&rdquo; ${where}`,
+      hint: "switches to <b>all</b> mode (events mode only matches VOD titles)",
+    });
+  }
+  if (creator && qFilter) {
+    ctas.push({
+      action: "drop-q",
+      icon: "👤",
+      label: `see all events from ${escape(creator)}`,
+      hint: `clears the search box · keeps creator${state.eventFilters.size ? " + chip" : ""}`,
+    });
+  }
+  if (state.eventFilters.size) {
+    ctas.push({
+      action: "drop-chips",
+      icon: "🎯",
+      label: "see all event classes" + (creator ? ` from ${escape(creator)}` : ""),
+      hint: "removes the class chip(s)",
+    });
+  }
+  ctas.push({
+    action: "drop-all",
+    icon: "↺",
+    label: "clear every filter",
+    hint: `${totalEvents} event${totalEvents === 1 ? "" : "s"} are in the public index`,
+  });
+
+  const ctaButtons = ctas.map((c, i) => `
+    <button class="ee-cta" data-cta="${c.action}">
+      <span class="ee-cta-icon">${c.icon}</span>
+      <span class="ee-cta-body">
+        <span class="ee-cta-label">${c.label}</span>
+        <span class="ee-cta-hint">${c.hint}</span>
+      </span>
+      <span class="ee-cta-arrow">→</span>
+    </button>`).join("");
+
+  return `
+    <div class="events-empty events-empty-rich">
+      <div class="ee-head">no events match these filters</div>
+      <div class="ee-sub">events mode filters by VOD title, not transcript text — the search box only narrows VODs.</div>
+      ${chips.length ? `<div class="ee-active">
+        <span class="ee-active-label">active filters</span>
+        <div class="ee-active-chips">${chips.join("")}</div>
+      </div>` : ""}
+      <div class="ee-ctas">${ctaButtons}</div>
+    </div>`;
+}
+
+function attachEventsEmptyHandlers() {
+  $$(".ee-filter-chip").forEach((btn) => {
+    btn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      const target = btn.dataset.clear;
+      if (target === "q") {
+        $("#q").value = "";
+        clearDeepLink();
+        runSearch();
+      } else if (target === "creator") {
+        $("#creator").value = "";
+        clearDeepLink();
+        runSearch();
+      } else if (target === "chip") {
+        const cls = btn.dataset.cls;
+        if (cls) state.eventFilters.delete(cls);
+        runSearch();
+      }
+    });
+  });
+  $$(".ee-cta").forEach((btn) => {
+    btn.addEventListener("click", (ev) => {
+      ev.preventDefault();
+      const action = btn.dataset.cta;
+      if (action === "transcripts") {
+        // Keep query + creator, drop the events filter chips, switch to all mode.
+        state.eventFilters.clear();
+        clearDeepLink();
+        switchMode("all");
+      } else if (action === "drop-q") {
+        $("#q").value = "";
+        clearDeepLink();
+        runSearch();
+      } else if (action === "drop-chips") {
+        state.eventFilters.clear();
+        runSearch();
+      } else if (action === "drop-all") {
+        $("#q").value = "";
+        $("#creator").value = "";
+        state.eventFilters.clear();
+        clearDeepLink();
+        runSearch();
+      }
+    });
+  });
 }
 
 // --- Timeline view ---------------------------------------------------------
@@ -3049,7 +3214,27 @@ function switchMode(mode) {
   if (_twitchPanel && _twitchPanel.classList.contains("visible")) {
     hideTwitchPanel();
   }
+  syncPlaceholder();
   runSearch();
+}
+
+// In events mode the search box filters VOD titles, not transcripts —
+// the global "search every word said" placeholder mis-sets expectations
+// and was the root cause of the "I typed 'surviv' and got nothing" UX
+// bug. Tell the user what the box does in the current mode.
+function placeholderForMode(mode) {
+  switch (mode) {
+    case "event":  return "filter VODs by title — events mode doesn't search transcripts";
+    case "vod":    return "search a phrase or paste a twitch URL…  ⌘K to focus";
+    case "clip":   return "search clip text…  ⌘K to focus";
+    case "saved":  return "filter your saved items…";
+    case "all":
+    default:       return "search a phrase, paste a twitch VOD URL, or filter by creator…  ⌘K to focus";
+  }
+}
+function syncPlaceholder() {
+  const el = $("#q");
+  if (el) el.placeholder = placeholderForMode(state.mode);
 }
 
 // --- Recent searches dropdown -----------------------------------------------
@@ -3345,6 +3530,7 @@ async function bootFromUrl() {
       b.classList.toggle("active", b.dataset.mode === mode);
     });
   }
+  syncPlaceholder();
   // Pre-populate event-class chips from ?event= params (repeatable).
   // Accepts both public slugs ("match_start") and internal class names
   // ("match_intro") so handcrafted deep links survive a future rename.
