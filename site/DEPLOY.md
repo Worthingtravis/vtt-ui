@@ -2,85 +2,117 @@
 
 ## How vtt-ui ships
 
-This Pages project must be **Git-integrated** so `git push origin main` triggers a
-production build. The Cloudflare Pages dashboard shows a GitHub-connected project
-with `deployment_trigger.type: "github:push"` on the latest deployment. Direct
-uploads (`wrangler pages deploy`) should only happen as a fallback.
+Every push to `main` triggers a GitHub Actions workflow
+(`.github/workflows/pages-deploy.yml`) that runs
+`wrangler pages deploy site/ --project-name=vtt-ui --branch=main`. The Cloudflare
+Pages dashboard reflects the deploy as a `deployment_trigger.type: "ad_hoc"` —
+that's expected (Direct Upload + CI). The user-facing result is identical to a
+native Git integration: `git push` → site updates ~60s later, no manual command.
 
-## Why this file exists (the regression)
+Manual deploys remain available as the fallback:
 
-On 2026-05-06 the project was created via `wrangler pages deploy`, which makes it
-a **Direct Upload** project. Cloudflare does not allow switching a Direct Upload
-project to Git integration later — confirmed in their docs and reproduced via the
-API (`POST /pages/projects` with a `source` block returns
-`8000011: There is an internal issue with your Cloudflare Pages Git installation`
-because the Cloudflare GitHub App was never installed on the account either).
+```bash
+source /mnt/ssd/development/video-to-text/.env.local
+cd /home/laughingwhales/development/vtt-ui/site
+npx -y wrangler@latest pages deploy . --project-name=vtt-ui --branch=main \
+  --commit-dirty=true
+```
 
-The only fix is: delete the project and recreate it with Git integration from the
-dashboard. The R2 buckets (`vtt-public-prod`, `vtt-data-prod`) are independent of
-the Pages project — deleting `vtt-ui` does not touch them; the binding declared
-in `wrangler.toml` reattaches on first build.
+Use the manual path when iterating without committing, or when the GitHub Action
+itself is broken (rare).
 
-## Reconnect procedure (one-time, dashboard required)
+## Why GitHub Actions and not native Git integration
 
-The Cloudflare GitHub App OAuth flow can only run from the dashboard, so this
-procedure cannot be fully automated. ~2 min of clicking.
+The `vtt-ui` Pages project was created via `wrangler pages deploy` (Direct
+Upload). Cloudflare does not allow converting a Direct Upload project to native
+Git integration after the fact — confirmed across multiple official docs (see
+`/pages/get-started/direct-upload/`, `/pages/configuration/git-integration/`,
+`/pages/platform/known-issues/`). The only path to native Git integration would
+be deleting the project and recreating it from the dashboard with Git, which is
+disruptive (~2 min downtime + GitHub App reauth + manual re-add of three runtime
+secrets).
 
-1. https://dash.cloudflare.com → Workers & Pages → `vtt-ui` → Settings → Delete
-   project. (Confirms the project name; `*.pages.dev` will 404 until step 5.)
-2. Workers & Pages → Create application → Pages → **Connect to Git**.
-3. **+ Add account** → GitHub → Install & Authorize the **Cloudflare Workers and
-   Pages** app on the `Worthingtravis/vtt-ui` repository. Pick *only this repo*.
-4. Pick `Worthingtravis/vtt-ui` from the list. Project name **must be `vtt-ui`**
-   (the R2 binding in `site/wrangler.toml` and the smoke test both hard-code
-   `vtt-ui.pages.dev`). Production branch: `main`. **Root directory: `site`**.
-   Build command: leave blank. Build output directory: leave blank
-   (`pages_build_output_dir = "."` in `site/wrangler.toml` controls it).
-5. Save and Deploy. The first build also re-binds R2 (`PUBLIC_BUCKET ↔
-   vtt-public-prod`) automatically from `wrangler.toml`.
-6. Re-add the production env vars: `LW_COOKIE_SECRET`, `LW_OAUTH_BASE_URL`,
-   `LW_OAUTH_CLIENT_ID` (Settings → Variables and Secrets → Production). Values
-   must match what was on the deleted project — pull from the OAuth provider's
-   admin page if they were not saved elsewhere.
+GitHub Actions + `cloudflare/wrangler-action@v3` is Cloudflare's officially-
+documented escape hatch for this exact case
+(`/pages/how-to/use-direct-upload-with-continuous-integration/`). Outcome is
+identical for our workflow; we lose only per-PR preview deployments, which we
+don't currently use.
+
+## Required secrets
+
+GitHub Actions needs two secrets on the `Worthingtravis/vtt-ui` repository:
+
+| Name                    | Source                                       |
+| ----------------------- | -------------------------------------------- |
+| `CLOUDFLARE_API_TOKEN`  | `.env.local` on the serve.py box             |
+| `CLOUDFLARE_ACCOUNT_ID` | `.env.local` on the serve.py box             |
+
+To rotate or re-add:
+
+```bash
+source /mnt/ssd/development/video-to-text/.env.local
+gh secret set CLOUDFLARE_API_TOKEN  --body "$CLOUDFLARE_API_TOKEN"  --repo Worthingtravis/vtt-ui
+gh secret set CLOUDFLARE_ACCOUNT_ID --body "$CLOUDFLARE_ACCOUNT_ID" --repo Worthingtravis/vtt-ui
+```
+
+Pages Functions runtime secrets (`LW_COOKIE_SECRET`, `LW_OAUTH_BASE_URL`,
+`LW_OAUTH_CLIENT_ID`) live on the Cloudflare Pages project itself (Settings →
+Variables and Secrets → Production) and **don't** need to round-trip through
+GitHub — `wrangler pages deploy` only uploads code; runtime secrets stay in
+Cloudflare's vault.
 
 ## Verify
 
 ```bash
-git -C /mnt/ssd/development/vtt-ui commit --allow-empty -m "verify: pages git auto-deploy"
+git -C /mnt/ssd/development/vtt-ui commit --allow-empty -m "verify: pages auto-deploy"
 git -C /mnt/ssd/development/vtt-ui push origin main
-# poll until a github:push deployment appears (usually <90s):
-source /mnt/ssd/development/video-to-text/.env.local
-curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-  "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/vtt-ui/deployments?per_page=5&page=1" \
-  | jq '.result[0] | {short_id, trigger:.deployment_trigger.type, status:.latest_stage.status, commit:.deployment_trigger.metadata.commit_hash[:8]}'
-# expected: {"trigger":"github:push","status":"success", ...}
+# Watch the Action run:
+gh run watch --repo Worthingtravis/vtt-ui
+# When it completes, smoke test:
 /mnt/ssd/development/vtt-ui/bin/test-smoke
 ```
 
-## How to re-diagnose if auto-deploy stops again
+## Re-diagnose if auto-deploy stops
 
 ```bash
+# 1. Did the Action even run? List recent runs:
+gh run list --repo Worthingtravis/vtt-ui --workflow pages-deploy.yml --limit 5
+
+# 2. If the Action ran but failed, get logs:
+gh run view --repo Worthingtravis/vtt-ui --log-failed
+
+# 3. If the secrets got rotated, re-set them (see "Required secrets" above).
+
+# 4. If wrangler-action's pinned version drifts and the deploy starts erroring
+#    on a flag, pin a known-good version in pages-deploy.yml — the action's
+#    @v3 tag floats on minor releases and has occasionally introduced regressions.
+
+# 5. Sanity-check that the Cloudflare API token still has Pages:Edit + R2 perms:
 source /mnt/ssd/development/video-to-text/.env.local
-# 1. Inspect the project's source block (must exist + type:"github" + deployments_enabled:true)
 curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-  "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/vtt-ui" \
-  | jq '.result | {name, production_branch, source}'
-
-# 2. Check recent triggers — github:push vs ad_hoc
-curl -s -H "Authorization: Bearer $CLOUDFLARE_API_TOKEN" \
-  "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/pages/projects/vtt-ui/deployments?per_page=10&page=1" \
-  | jq '.result[] | {short_id, trigger:.deployment_trigger.type, branch:.deployment_trigger.metadata.branch}'
-
-# 3. Confirm GitHub App is still installed + has access to the repo
-gh api repos/Worthingtravis/vtt-ui/hooks  # cloudflare webhook should be listed
-# Or visit https://github.com/settings/installations → Cloudflare Workers and Pages → repo access
-
-# 4. If the App is gone or repo access was revoked: dashboard → vtt-ui → Settings →
-#    Builds → Manage (under Git Repository) → Reinstall.
+  "https://api.cloudflare.com/client/v4/accounts/$CLOUDFLARE_ACCOUNT_ID/tokens/verify" \
+  | jq '.result.status'
 ```
 
-The `source` block being absent (or `deployments_enabled:false`) is the canonical
-"auto-deploy is broken" signal. If `source.type === "github"` but pushes still
-don't trigger builds, check the GitHub repo's webhook deliveries
-(`gh api repos/Worthingtravis/vtt-ui/hooks/<id>/deliveries`) for failures on the
-Cloudflare receiver side.
+## If we ever want native Git integration
+
+The cost is one-time disruption + three secrets to re-add. Path:
+
+1. Save the values of `LW_COOKIE_SECRET`, `LW_OAUTH_BASE_URL`, `LW_OAUTH_CLIENT_ID`
+   from the current Pages project (Settings → Variables and Secrets).
+2. Dashboard → Workers & Pages → `vtt-ui` → Settings → Delete project. (`*.pages.dev`
+   will 404 until step 5.)
+3. Workers & Pages → Create application → Pages → **Connect to Git** → **+ Add
+   account** → install **Cloudflare Workers and Pages** GitHub App on
+   `Worthingtravis/vtt-ui`.
+4. Pick the repo. Project name **must be `vtt-ui`** (R2 binding + smoke test
+   hard-code the URL). Root directory: `site`. Production branch: `main`. Build
+   command + output dir: blank (`pages_build_output_dir = "."` in
+   `site/wrangler.toml` controls it).
+5. Save and Deploy. The R2 binding (`PUBLIC_BUCKET ↔ vtt-public-prod`) reattaches
+   from `wrangler.toml` on first build.
+6. Re-add the three secrets to Settings → Variables and Secrets → Production.
+7. Delete `.github/workflows/pages-deploy.yml` (no longer needed).
+
+This is documented as a fallback only. The Action-based path is the supported
+default until/unless preview-per-PR becomes important.

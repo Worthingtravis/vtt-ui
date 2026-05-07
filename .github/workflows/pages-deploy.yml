@@ -1,0 +1,53 @@
+# Deploy to Cloudflare Pages on every push to main.
+#
+# Background — vtt-ui was created via `wrangler pages deploy` (Direct
+# Upload). Cloudflare doesn't allow converting Direct Upload projects
+# to native Git integration after the fact (see site/DEPLOY.md). This
+# Action is the official escape hatch documented at
+#   https://developers.cloudflare.com/pages/how-to/use-direct-upload-with-continuous-integration/
+# It runs `wrangler pages deploy` on every push, so the result is
+# identical to native Git integration: git push → site updates ~60s
+# later, no manual command.
+#
+# Secrets required (set via `gh secret set`):
+#   CLOUDFLARE_API_TOKEN  — token with Pages:Edit + R2 Object Storage perms
+#   CLOUDFLARE_ACCOUNT_ID — the account that owns the vtt-ui project
+#
+# Pages Functions secrets (LW_COOKIE_SECRET, LW_OAUTH_*) live on the
+# Cloudflare Pages project itself and don't need to round-trip through
+# GitHub — `wrangler pages deploy` only uploads code; runtime secrets
+# stay in Cloudflare's vault.
+
+name: Deploy to Cloudflare Pages
+
+on:
+  push:
+    branches:
+      - main
+  # Manual trigger so a re-deploy can be kicked from the Actions tab
+  # without faking a commit.
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      deployments: write
+    name: Deploy to Cloudflare Pages
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: site
+          # `pages deploy .` mirrors the manual command we've been
+          # running locally; --project-name pins the target project so
+          # the deploy can't accidentally land on a fork's project.
+          command: pages deploy . --project-name=vtt-ui --branch=main
+          gitHubToken: ${{ secrets.GITHUB_TOKEN }}
