@@ -752,6 +752,33 @@
     header #userLogin { color: #c4b5fd; font-weight: 500; }
     header #logoutBtn { background: transparent; border: 0; color: #64748b; padding: 0 0 0 4px; font-size: 11px; cursor: pointer; font-family: inherit; }
     header #logoutBtn:hover { color: #fca5a5; }
+    /* ── "your VODs" ambient queue indicator ── */
+    #queuePill { display: none; position: relative; }
+    #queuePill.visible { display: inline-flex; align-items: center; }
+    #queuePillBtn { display: inline-flex; align-items: center; gap: 5px; background: #0c4a6e; border: 1px solid #0e7490; border-radius: 99px; padding: 3px 10px 3px 8px; font-size: 11px; color: #7dd3fc; cursor: pointer; font-family: inherit; transition: background .12s; }
+    #queuePillBtn:hover { background: #0e7490; }
+    #queuePillBtn .qpill-count { background: #38bdf8; color: #0c4a6e; font-weight: 700; border-radius: 99px; padding: 0 5px; font-size: 10px; line-height: 16px; min-width: 16px; text-align: center; }
+    #queuePopover { display: none; position: absolute; top: calc(100% + 6px); right: 0; min-width: 320px; max-width: 420px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; box-shadow: 0 12px 36px rgba(0,0,0,.7); z-index: 200; padding: 12px 0 8px; }
+    #queuePopover.open { display: block; }
+    #queuePopover .qp-title { font-size: 11px; font-weight: 600; color: #94a3b8; letter-spacing: .07em; text-transform: uppercase; padding: 0 14px 8px; border-bottom: 1px solid #1f2937; margin-bottom: 4px; }
+    #queuePopover .qp-empty { color: #475569; font-size: 12px; padding: 8px 14px; }
+    #queuePopover .qp-job { display: flex; flex-direction: column; gap: 2px; padding: 7px 14px; border-radius: 0; transition: background .1s; }
+    #queuePopover .qp-job:hover { background: #131a3a; }
+    #queuePopover .qp-job-row { display: flex; align-items: center; gap: 8px; }
+    #queuePopover .qp-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+    #queuePopover .qp-dot.queued { background: #94a3b8; }
+    #queuePopover .qp-dot.running { background: #38bdf8; animation: qpdot-pulse 1s ease-in-out infinite; }
+    #queuePopover .qp-dot.done { background: #6ee7b7; }
+    #queuePopover .qp-dot.failed { background: #fca5a5; }
+    #queuePopover .qp-dot.orphaned { background: #fde047; }
+    #queuePopover .qp-dot.cancelled { background: #475569; }
+    @keyframes qpdot-pulse { 0%,100%{opacity:1}50%{opacity:.4} }
+    #queuePopover .qp-name { font-size: 12px; color: #e0f2fe; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
+    #queuePopover .qp-status { font-size: 10px; font-variant-numeric: tabular-nums; color: #64748b; flex-shrink: 0; }
+    #queuePopover .qp-link { font-size: 11px; color: #38bdf8; text-decoration: none; padding: 0 14px; display: block; margin-top: 8px; border-top: 1px solid #1f2937; padding-top: 8px; }
+    #queuePopover .qp-link:hover { text-decoration: underline; }
+    #queueDismiss { position: fixed; inset: 0; z-index: 190; display: none; }
+    #queueDismiss.open { display: block; }
     /* + submit a VOD */
     .submit-trigger { background: #0c4a6e; border: 1px solid #075985; color: #e0f2fe; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; font-family: inherit; }
     .submit-trigger:hover { background: #0e7490; }
@@ -843,6 +870,21 @@
       <span id="userLogin">…</span>
       <button id="logoutBtn" title="log out">log out</button>
     </span>
+    <!-- Ambient "your VODs" queue indicator — visible only when logged in and
+         there are recent jobs attributed to this user. Polls /api/my_queue
+         every 30 s. Completing jobs trigger a brief toast notice. -->
+    <div id="queuePill">
+      <button id="queuePillBtn" title="your submitted VODs">
+        <i data-lucide="layers">⊞</i>
+        your VODs
+        <span class="qpill-count" id="queuePillCount">0</span>
+      </button>
+      <div id="queuePopover">
+        <div class="qp-title">your VODs</div>
+        <div id="queuePopoverBody"></div>
+      </div>
+    </div>
+    <div id="queueDismiss"></div>
   </div>
 </header>
 <main>
@@ -1607,12 +1649,12 @@ const ROADMAP = {
     ["xcorr scans stream from R2", "scanner reads audio directly from object storage — no local-cache pull required for one-shot scans"],
     ["disk auto-eviction", "every download upload also evicts oldest local VODs to keep ≥50 GB free; R2 backstops every read"],
     ["in-flight submission pill", "topbar pill + qPasteHint takeover so a re-paste of an in-progress URL shows live status (downloading/transcribing/% done) instead of letting you queue a duplicate"],
+    ["submitter notifications", "your submissions are tagged with your account — close the tab safely and see live status in the 'your VODs' topbar pill on next visit"],
+    ["job-state persistence", "serve.py restarts no longer drop in-flight job history; jobs.jsonl write-through + orphan detection on boot rehydrate"],
+    ["auto-scan after transcribe", "public VOD submissions automatically chain xcorr event scan after transcription so the events lane is populated end-to-end"],
   ],
   next: [
-    ["submitter notifications", "tag every submit with your account so closing the tab is safe — your queue and recent VODs surface on next visit"],
-    ["job-state persistence", "serve.py restarts no longer drop in-flight jobs; jobs.jsonl write-through + boot rehydrate"],
     ["named cloudflared tunnel", "stable hostname between Pages and serve.py — no more 502 window when serve.py restarts"],
-    ["auto-scan after transcribe", "public VOD submissions get the events lane populated end-to-end without a manual click"],
     ["VOD thumbnails", "swap basenames for real Twitch preview images so VODs are scannable"],
     ["🎙 my VODs", "logged-in creators see + search their own corpus (waiting on auth scope merge)"],
     ["focused detail pages", "/clip/&lt;id&gt; and /v/&lt;creator&gt;/&lt;basename&gt; with proper share previews"],
@@ -4210,6 +4252,13 @@ async function refreshAuth() {
     loginBtn.hidden = false;
   }
   state.session = session;
+  // Start ambient queue polling when logged in; stop when logged out.
+  if (session && session.authenticated) {
+    startMyQueuePolling();
+  } else {
+    stopMyQueuePolling();
+    document.getElementById("queuePill")?.classList.remove("visible");
+  }
   // If the logged-in handle matches a creator dir we have, surface their
   // VODs as a personalized section on the landing page (only when nothing
   // else is being rendered — search query active or a deep-link page).
@@ -4265,8 +4314,120 @@ document.getElementById("logoutBtn").addEventListener("click", async () => {
   try {
     await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
   } catch { /* ignore */ }
+  stopMyQueuePolling();
+  document.getElementById("queuePill").classList.remove("visible");
   refreshAuth();
 });
+
+// ── "your VODs" ambient queue indicator ────────────────────────────────────
+// Polls /api/my_queue every 30 s when logged in. Shows a pill in the topbar
+// with the count of in-flight jobs (queued+running). When a job transitions
+// from running→done since last poll, shows a brief toast. Popover lists all
+// recent jobs with deep-link buttons.
+let _myQueueJobs = [];
+let _myQueuePollTimer = null;
+const QUEUE_POLL_MS = 30_000;
+
+function _statusDot(status) {
+  const cls = { queued: "queued", running: "running", done: "done",
+                failed: "failed", orphaned: "orphaned", cancelled: "cancelled" }[status] || "queued";
+  return `<span class="qp-dot ${cls}"></span>`;
+}
+
+function _renderQueuePopover(jobs) {
+  const body = document.getElementById("queuePopoverBody");
+  if (!body) return;
+  if (!jobs.length) {
+    body.innerHTML = `<div class="qp-empty">no recent submissions</div>`;
+    return;
+  }
+  body.innerHTML = jobs.map((j) => {
+    const name = j.basename || j.creator || j.job_id || "…";
+    const label = j.creator ? `${j.creator}/${name}` : name;
+    const statusText = j.restart_orphan ? "orphaned — re-submit" : j.status;
+    const linkHtml = j.deep_link && (j.status === "done")
+      ? `<a class="qp-link" href="${escape(j.deep_link)}">▶ view ${escape(j.basename || j.creator || "VOD")}</a>`
+      : "";
+    return `<div class="qp-job">
+      <div class="qp-job-row">
+        ${_statusDot(j.status)}
+        <span class="qp-name" title="${escape(label)}">${escape(label)}</span>
+        <span class="qp-status">${escape(statusText)}</span>
+      </div>
+      ${linkHtml}
+    </div>`;
+  }).join("");
+}
+
+function _updateQueuePill(jobs) {
+  const pill = document.getElementById("queuePill");
+  const countEl = document.getElementById("queuePillCount");
+  if (!pill || !countEl) return;
+  const inflight = jobs.filter((j) => j.status === "queued" || j.status === "running").length;
+  countEl.textContent = String(inflight);
+  if (jobs.length > 0) {
+    pill.classList.add("visible");
+  } else {
+    pill.classList.remove("visible");
+  }
+  _renderQueuePopover(jobs);
+  if (typeof lucide !== "undefined") lucide.createIcons();
+}
+
+async function _tickMyQueue() {
+  if (!state.session || !state.session.authenticated) return;
+  let jobs = [];
+  try {
+    const r = await fetch("/api/my_queue", { credentials: "same-origin" });
+    if (r.status === 401) { stopMyQueuePolling(); return; }
+    if (!r.ok) return;
+    const d = await r.json();
+    jobs = d.jobs || [];
+  } catch {
+    return;
+  }
+
+  // Detect transitions to done since the last poll.
+  const prevById = new Map(_myQueueJobs.map((j) => [j.job_id, j.status]));
+  for (const j of jobs) {
+    const prev = prevById.get(j.job_id);
+    if (prev && prev !== "done" && j.status === "done") {
+      const label = j.basename || j.creator || "VOD";
+      toast(`✓ ${label} ready`);
+    }
+  }
+
+  _myQueueJobs = jobs;
+  _updateQueuePill(jobs);
+}
+
+function startMyQueuePolling() {
+  if (_myQueuePollTimer) return; // already running
+  _tickMyQueue(); // immediate first fetch
+  _myQueuePollTimer = setInterval(_tickMyQueue, QUEUE_POLL_MS);
+}
+
+function stopMyQueuePolling() {
+  if (_myQueuePollTimer) {
+    clearInterval(_myQueuePollTimer);
+    _myQueuePollTimer = null;
+  }
+  _myQueueJobs = [];
+}
+
+// Wire queue pill toggle.
+document.getElementById("queuePillBtn").addEventListener("click", (ev) => {
+  ev.stopPropagation();
+  const pop = document.getElementById("queuePopover");
+  const dim = document.getElementById("queueDismiss");
+  const open = pop.classList.toggle("open");
+  dim.classList.toggle("open", open);
+});
+document.getElementById("queueDismiss").addEventListener("click", () => {
+  document.getElementById("queuePopover").classList.remove("open");
+  document.getElementById("queueDismiss").classList.remove("open");
+});
+
 refreshAuth();
 </script>
 </body>

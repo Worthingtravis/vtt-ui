@@ -83,6 +83,15 @@ else
   bad "/api/scan/download_and_queue should 401 anon, got HTTP $dl_scan_code"
 fi
 
+# /api/my_queue is auth-gated: anonymous callers must receive 401.
+my_queue_code=$(curl -s --compressed -X GET "$BASE/api/my_queue" \
+  -o /dev/null -w "%{http_code}")
+if [ "$my_queue_code" = "401" ]; then
+  ok "/api/my_queue rejects anon (401)"
+else
+  bad "/api/my_queue should 401 anon, got HTTP $my_queue_code"
+fi
+
 echo "== VOD availability (requires serve.py restart) =="
 # NOTE: these hit serve.py directly via the tunnel URL. Run only after
 # restarting serve.py with the new vod_scan_chain / vod_availability changes.
