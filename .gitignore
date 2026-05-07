@@ -1,0 +1,24 @@
+# Wrangler local state
+.wrangler/
+node_modules/
+
+# Secrets — never commit
+.env
+.env.local
+.env.*
+!.env.example
+
+# Build / deploy artifacts
+dist/
+.next/
+
+# Editor / OS
+.DS_Store
+.vscode/
+.idea/
+*.swp
+
+# Logs
+*.log
+npm-debug.log*
+yarn-error.log*

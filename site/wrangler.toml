@@ -1,0 +1,7 @@
+name = "vtt-ui"
+compatibility_date = "2026-04-01"
+pages_build_output_dir = "."
+
+[[r2_buckets]]
+binding = "PUBLIC_BUCKET"
+bucket_name = "vtt-public-prod"
