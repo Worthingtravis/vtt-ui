@@ -75,6 +75,11 @@
     #twitchFloatingPanel { position: fixed; bottom: 16px; right: 16px; width: 480px; z-index: 90;
       background: #0f172a; border: 1px solid #334155; border-radius: 8px; box-shadow: 0 8px 32px rgba(0,0,0,.6);
       display: none; overflow: hidden; resize: both; min-width: 280px; min-height: 200px; max-width: 90vw; }
+    /* Anchored mode: docked above the active VOD's timeline track. JS sets
+       left/top/width inline; no resize handle (track width drives it). */
+    #twitchFloatingPanel.anchored { bottom: auto; right: auto; resize: none; max-width: none; }
+    #twitchFloatingPanel.anchored .tfp-bar { cursor: grab; }
+    #twitchFloatingPanel.anchored .tfp-bar:active { cursor: grabbing; }
     #twitchFloatingPanel.visible { display: flex; flex-direction: column; }
     #twitchFloatingPanel .tfp-bar { display: flex; align-items: center; justify-content: space-between; padding: 6px 10px; background: #1e293b; border-bottom: 1px solid #334155; cursor: move; user-select: none; }
     #twitchFloatingPanel .tfp-title { color: #c7d2fe; font-size: 12px; font-weight: 500; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -306,6 +311,23 @@
     .tl-legend { display: inline-flex; align-items: center; gap: 4px; }
     .tl-legend::before { content: ""; display: inline-block; width: 8px; height: 8px; background: var(--c, #94a3b8); border-radius: 50%; }
     .tl-help { color: #6b7280; font-size: 11px; margin: 8px 0 12px; padding: 6px 10px; background: #131a3a; border: 1px solid #1f2937; border-radius: 4px; }
+    /* List-view event grouping: rows are bucketed by VOD with a header bar
+       that doubles as the player-anchor target (player docks above this). */
+    .vod-group { background: #0f172a; border: 1px solid #1f2937; border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+    .vod-group.now-playing { outline: 1px solid #38bdf8; outline-offset: 2px; border-color: #1e293b; }
+    .vod-group-header { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: #131a3a; border-bottom: 1px solid #1f2937; min-height: 32px; }
+    .vod-group-header .creator { color: #a5b4fc; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; flex-shrink: 0; }
+    .vod-group-header .creator .badge { background: #4338ca; color: #e0e7ff; padding: 1px 6px; border-radius: 3px; margin-right: 6px; font-size: 9px; }
+    .vod-group-header .title { color: #e0e7ff; font-size: 13px; font-weight: 500; min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .vod-group-header .vg-count { color: #94a3b8; font-size: 11px; padding: 2px 8px; background: #1e293b; border-radius: 10px; flex-shrink: 0; }
+    .vod-group-header .vg-twitch { color: #7dd3fc; font-size: 11px; text-decoration: none; flex-shrink: 0; }
+    .vod-group-header .vg-twitch:hover { text-decoration: underline; }
+    .vod-group-body > .row { border-radius: 0; border-left: 0; border-right: 0; border-top: 0; }
+    .vod-group-body > .row:last-child { border-bottom: 0; }
+    /* Invisible reserved-space marker that the anchored player docks into.
+       Lives inside the active VOD's card/group, sized at runtime to the
+       player's current height. Pure layout — no border, no background. */
+    .player-spacer { width: 100%; }
     /* Per-class accordion sections inside each VOD card. Drill down from
        the timeline overview into the actual list of events without leaving
        the card. Each section gets its own sort + score-filter controls. */
@@ -839,6 +861,8 @@ const ROADMAP = {
     ["+ submit a VOD", "paste a Twitch URL → it gets transcribed + scanned + published"],
     ["log in with Twitch", "one identity across the laughingwhales family"],
     ["🎯 event search", "find specific in-game DBD moments — match start/end, gen popped, survivor on hook"],
+    ["docked twitch player", "playback panel anchors above the active VOD's timeline (or list-view group) instead of floating bottom-right"],
+    ["list-view VODs grouped", "events list buckets by VOD with a header bar that doubles as the player anchor"],
   ],
   next: [
     ["VOD thumbnails", "swap basenames for real Twitch preview images so VODs are scannable"],
@@ -1207,7 +1231,7 @@ async function runEventSearch(creator, reqId) {
       + renderEventTimelines(filteredHits);
     attachTimelineHandlers();
   } else {
-    $("#results").innerHTML = filteredHits.map((h) => eventRow(h.rec)).join("");
+    $("#results").innerHTML = renderEventListGrouped(filteredHits);
     attachRowHandlers();
   }
   state.focusIdx = -1;
@@ -1609,6 +1633,38 @@ function eventRow(e) {
     </div>`;
 }
 
+// List-view event grouping. Bucket hits by (creator, basename), emit a
+// header bar above each group; the player docks above this header when a
+// row in the group is the active one. Mirrors the timeline-view pattern.
+function renderEventListGrouped(hits) {
+  const byVod = new Map();
+  for (const h of hits) {
+    const e = h.rec || h;
+    const key = `${e.c}/${e.b}`;
+    if (!byVod.has(key)) {
+      byVod.set(key, { c: e.c, b: e.b, tv: e.tv || "", title: e.title || e.b, items: [] });
+    }
+    byVod.get(key).items.push(e);
+  }
+  // Order: most events first (matches timeline-view sort).
+  const groups = Array.from(byVod.values()).sort((a, b) => b.items.length - a.items.length);
+  return groups.map((g) => {
+    const tvLink = g.tv
+      ? `<a class="vg-twitch" href="https://www.twitch.tv/videos/${encodeURIComponent(g.tv)}" target="_blank" rel="noopener" title="open VOD on twitch.tv"><i data-lucide="external-link">↗</i> on twitch.tv</a>`
+      : "";
+    const rows = g.items.map((e) => eventRow(e)).join("");
+    return `<div class="vod-group" data-creator="${escape(g.c)}" data-basename="${escape(g.b)}" data-tv="${escape(g.tv)}">
+      <div class="vod-group-header">
+        <span class="creator"><span class="badge">VOD</span>${escape(g.c)}</span>
+        <span class="title" title="${escape(g.title)}">${escape(g.title)}</span>
+        <span class="vg-count">${g.items.length} event${g.items.length === 1 ? "" : "s"}</span>
+        ${tvLink}
+      </div>
+      <div class="vod-group-body">${rows}</div>
+    </div>`;
+  }).join("");
+}
+
 function attachRowHandlers() {
   refreshIcons();
   $$(".clip-row[data-id]").forEach((el) => {
@@ -1686,6 +1742,9 @@ let _twitchPlayer = null;       // Twitch.Player instance (null if using fallbac
 let _twitchVod = null;          // currently-loaded vod id (string)
 let _twitchPanel = null;        // <div id="twitchFloatingPanel">
 let _twitchActiveRow = null;    // the .row currently owning the player
+let _anchorTarget = null;       // the element the panel is currently docked above
+let _anchorRaf = 0;             // rAF handle for scroll/resize re-anchor
+let _anchorContainer = null;    // the .tl-card / .vod-group whose visibility hides the panel
 
 function ensureTwitchPanel() {
   if (_twitchPanel) return _twitchPanel;
@@ -1702,15 +1761,19 @@ function ensureTwitchPanel() {
     <div class="tfp-body"></div>`;
   panel.querySelector(".tfp-close").addEventListener("click", hideTwitchPanel);
   panel.querySelector(".tfp-min").addEventListener("click", () => panel.classList.toggle("minimized"));
-  // Drag-to-move via the title bar.
+  // Drag-to-move via the title bar. Dragging detaches from anchor mode and
+  // returns the panel to free-floating behavior (so users can pop it out
+  // somewhere visible if the active VOD card is scrolled past).
   const bar = panel.querySelector(".tfp-bar");
   let dragging = null;
   bar.addEventListener("mousedown", (ev) => {
     if (ev.target.closest("button")) return;
     const r = panel.getBoundingClientRect();
     dragging = { dx: ev.clientX - r.left, dy: ev.clientY - r.top };
+    detachAnchor();
     panel.style.right = "auto";
     panel.style.bottom = "auto";
+    panel.style.width = `${r.width}px`;
     ev.preventDefault();
   });
   document.addEventListener("mousemove", (ev) => {
@@ -1726,12 +1789,114 @@ function ensureTwitchPanel() {
 
 function hideTwitchPanel() {
   if (_twitchPlayer) { try { _twitchPlayer.pause(); } catch {} }
-  if (_twitchPanel) _twitchPanel.classList.remove("visible");
+  if (_twitchPanel) {
+    _twitchPanel.classList.remove("visible");
+    _twitchPanel.classList.remove("anchored");
+  }
+  detachAnchor();
   if (_twitchActiveRow) {
     _twitchActiveRow.classList.remove("now-playing");
     _twitchActiveRow.classList.remove("expanded");
+    const c = _twitchActiveRow.closest(".tl-card, .vod-group");
+    if (c) c.classList.remove("now-playing");
   }
   _twitchActiveRow = null;
+}
+
+// --- Player anchoring ------------------------------------------------------
+// In timeline view, dock the player above the active VOD card's track.
+// In list view, dock above the .vod-group header. The iframe NEVER moves
+// DOM-wise (that would reload it per the HTML spec) — instead we keep it in
+// a position:fixed panel and update left/top/width to point at the anchor's
+// bounding rect. Listeners re-run on scroll/resize so it stays put while
+// the user scrolls. When the active group scrolls fully out of view, the
+// panel becomes invisible (but its iframe + Twitch.Player stay alive).
+function resolveAnchorTarget(row) {
+  if (!row) return null;
+  const card = row.closest(".tl-card");
+  if (card) return { container: card, target: card.querySelector(".tl-track") };
+  const group = row.closest(".vod-group");
+  // Anchor on the body (not the header) so the docked player ends up between
+  // the group's header and its event rows — same vertical placement as the
+  // timeline card's `track`.
+  if (group) return { container: group, target: group.querySelector(".vod-group-body") };
+  return null;
+}
+
+function ensureSpacer() {
+  if (!_anchorContainer || !_anchorTarget) return null;
+  let sp = _anchorContainer.querySelector(":scope > .player-spacer, :scope * > .player-spacer");
+  if (sp) return sp;
+  sp = document.createElement("div");
+  sp.className = "player-spacer";
+  _anchorTarget.parentNode.insertBefore(sp, _anchorTarget);
+  return sp;
+}
+
+function applyAnchor() {
+  if (!_anchorTarget || !_twitchPanel) return;
+  // Compute desired width from the anchor's width.
+  const tr = _anchorTarget.getBoundingClientRect();
+  const w = Math.max(320, Math.min(tr.width, window.innerWidth - 16));
+  const bodyH = Math.round(w * 9 / 16);
+  const totalH = bodyH + 28; // tfp-bar height
+  // Reserve space INSIDE the container so content below is pushed down and
+  // the player never overlaps the row above (title/header). The spacer lives
+  // immediately before the anchor target so the player visually sits "above
+  // the anchor" without covering anything.
+  const spacer = ensureSpacer();
+  if (spacer) spacer.style.height = `${totalH + 16}px`;
+  // Re-measure post-spacer for accurate placement.
+  const sr = spacer ? spacer.getBoundingClientRect() : tr;
+  let left = sr.left;
+  if (w < sr.width) left += (sr.width - w) / 2; // center if narrower than container
+  if (left + w > window.innerWidth - 8) left = Math.max(8, window.innerWidth - 8 - w);
+  if (left < 8) left = 8;
+  const top = Math.max(8, sr.top + 8);
+  // Hide if the container is fully out of viewport.
+  if (_anchorContainer) {
+    const cr = _anchorContainer.getBoundingClientRect();
+    const offscreen = cr.bottom < 0 || cr.top > window.innerHeight;
+    _twitchPanel.style.visibility = offscreen ? "hidden" : "";
+  }
+  _twitchPanel.style.left = `${Math.round(left)}px`;
+  _twitchPanel.style.top = `${Math.round(top)}px`;
+  _twitchPanel.style.width = `${Math.round(w)}px`;
+}
+
+function _onAnchorTick() {
+  if (_anchorRaf) return;
+  _anchorRaf = requestAnimationFrame(() => {
+    _anchorRaf = 0;
+    applyAnchor();
+  });
+}
+
+function attachAnchor(target, container) {
+  detachAnchor();
+  _anchorTarget = target;
+  _anchorContainer = container || null;
+  if (_twitchPanel) _twitchPanel.classList.add("anchored");
+  window.addEventListener("scroll", _onAnchorTick, { passive: true });
+  window.addEventListener("resize", _onAnchorTick);
+  applyAnchor();
+}
+
+function detachAnchor() {
+  if (_anchorTarget) {
+    window.removeEventListener("scroll", _onAnchorTick);
+    window.removeEventListener("resize", _onAnchorTick);
+  }
+  if (_anchorContainer) {
+    const sp = _anchorContainer.querySelector(".player-spacer");
+    if (sp) sp.remove();
+  }
+  _anchorTarget = null;
+  _anchorContainer = null;
+  if (_twitchPanel) {
+    _twitchPanel.classList.remove("anchored");
+    _twitchPanel.style.visibility = "";
+  }
 }
 
 function rowDisplayTitle(row) {
@@ -1749,12 +1914,27 @@ function showTwitchPlayer(row, vod, seconds) {
   panel.classList.add("visible");
   panel.classList.remove("minimized");
   panel.querySelector(".tfp-title").textContent = `${rowDisplayTitle(row)} · @ ${fmtT(seconds)}`;
-  // Move "now playing" outline to the new row.
+  // Move "now playing" outline to the new row + its containing card/group.
   if (_twitchActiveRow && _twitchActiveRow !== row) {
     _twitchActiveRow.classList.remove("now-playing");
+    const prev = _twitchActiveRow.closest(".tl-card, .vod-group");
+    if (prev) prev.classList.remove("now-playing");
   }
   row.classList.add("now-playing");
+  const container = row.closest(".tl-card, .vod-group");
+  if (container) container.classList.add("now-playing");
   _twitchActiveRow = row;
+  // Anchor the panel above the relevant container's anchor target. If the
+  // row is in some other context (search results, clip rows), skip anchor
+  // and the panel stays bottom-right.
+  const anc = resolveAnchorTarget(row);
+  if (anc && anc.target) {
+    attachAnchor(anc.target, anc.container);
+  } else {
+    detachAnchor();
+    // Reset inline styles so panel returns to its CSS-default bottom-right.
+    panel.style.left = ""; panel.style.top = ""; panel.style.width = "";
+  }
 
   // Same VOD → just seek. The iframe stays alive, no reload.
   if (_twitchVod === vod && _twitchPlayer) {
