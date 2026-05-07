@@ -512,6 +512,26 @@
     .row.evr .micro button[data-act="up"].voted { color: var(--good); border-color: var(--good); background: rgba(16,185,129,.18); }
     .row.evr .micro button[data-act="down"].voted { color: var(--bad); border-color: var(--bad); background: rgba(239,68,68,.18); }
     .row.evr .micro button.starred { color: var(--gold); border-color: var(--gold); }
+    /* Reward state: events the user has confirmed get a green left stripe
+       and a soft green tint so their contribution stays visible across
+       page loads. Mirrors the cyan now-playing stripe; both can stack
+       (now-playing wins on the inner stripe, voted-up holds the outer).
+       Voted-down rows get a quieter red tint — still visible, doesn't
+       shout, but signals "I marked this wrong" so the user can see what
+       they've already triaged. */
+    .row.evr.voted-up { box-shadow: inset 3px 0 0 var(--good); background: rgba(16,185,129,.05); }
+    .row.evr.voted-up:hover { background: rgba(16,185,129,.10); }
+    .row.evr.voted-up.now-playing { box-shadow: inset 3px 0 0 var(--accent), inset 6px 0 0 var(--good); }
+    .row.evr.voted-up .evr-when::before { content: "✓ "; color: var(--good); font-weight: 700; }
+    .row.evr.voted-down { background: rgba(239,68,68,.04); }
+    .row.evr.voted-down .evr-when { color: var(--ink-3); }
+    .row.evr.voted-down .evr-score-bar > span { background: linear-gradient(90deg, #475569, var(--bad)); opacity: 0.6; }
+    /* "you confirmed N" reward pill — appears on .vod-group-header and
+       .tl-header when the user has any up-votes in that VOD. Soft green
+       so it reads as a thank-you, not a warning. Inline-flex so it sits
+       beside existing header chips without rearranging layout. */
+    .you-confirmed-pill { display: inline-flex; align-items: center; gap: 4px; padding: 3px 9px; background: rgba(16,185,129,.12); color: var(--good); border: 1px solid rgba(16,185,129,.35); border-radius: 999px; font: 500 11px var(--font-mono); letter-spacing: -0.01em; white-space: nowrap; cursor: default; }
+    .you-confirmed-pill[hidden] { display: none; }
     .row.evr .micro button.vote-locked { opacity: 0.45; }
     .row.evr .micro button.vote-locked:hover { opacity: 0.85; }
     @media (max-width: 720px) {
@@ -586,6 +606,12 @@
     .ev-item:first-child { border-top: 0; }
     .ev-item:hover { background: var(--bg-2); }
     .ev-item.now-playing { background: rgba(56,189,248,.07); box-shadow: inset 3px 0 0 var(--accent); }
+    .ev-item.voted-up { box-shadow: inset 3px 0 0 var(--good); background: rgba(16,185,129,.05); }
+    .ev-item.voted-up:hover { background: rgba(16,185,129,.10); }
+    .ev-item.voted-up.now-playing { box-shadow: inset 3px 0 0 var(--accent), inset 6px 0 0 var(--good); }
+    .ev-item.voted-up .ev-time::before { content: "✓ "; color: var(--good); font-weight: 700; }
+    .ev-item.voted-down { background: rgba(239,68,68,.04); }
+    .ev-item.voted-down .ev-time { color: var(--ink-3); }
     .ev-item-actions { display: inline-flex; gap: 4px; align-items: center; padding-left: 10px; border-left: 1px solid var(--line-soft); }
     .ev-item .ev-meta-btn { background: transparent; border: 1px solid transparent; color: var(--ink-3); font-size: 13px; padding: 5px 7px; border-radius: 5px; cursor: pointer; min-width: 30px; line-height: 1; font-family: inherit; display: inline-flex; align-items: center; justify-content: center; transition: color .12s, background .12s, border-color .12s; }
     /* Default hover for action buttons (star / share / play / twitch) is
@@ -870,6 +896,14 @@ const state = {
   lastHits: [],        // last rendered list (for j/k navigation)
   eventFilters: new Set(),  // active xc_<class> chips in event mode
   eventCounts: {},     // {class: total_in_corpus} for chip count badges
+  // Deep-link target preserved across runSearch's URL rewrite. Set from
+  // ?vod=<creator>/<basename>&t=<sec> on initial load and on every play
+  // action so /?mode=event&event=...&vod=...&t=... stays a valid share
+  // link as the user moves the player around. Cleared when the user
+  // explicitly types a new query / changes creator / changes mode / picks
+  // a recent search — those are state changes that invalidate the target.
+  deepVod: null,       // "<creator>/<basename>"
+  deepT: null,         // seconds (may have decimals)
   eventView: (() => {
     // Persist the user's view choice — most people will want one or the
     // other consistently. Default = timeline, since that's the win for the
@@ -891,6 +925,80 @@ const state = {
 };
 function saveEventVotes() {
   try { localStorage.setItem("vtt_event_votes_v1", JSON.stringify(Array.from(state.eventVotes.entries()))); } catch {}
+}
+
+// Reward state — every event row the user has up-voted gets a green
+// stripe + ✓ prefix on its timestamp; every down-voted row gets a
+// quieter red tint. Idempotent: walks all currently-rendered .ev-item
+// (timeline accordion) and .row.evr (list view) rows and applies
+// classes from state.eventVotes. Called after every render so reload-
+// or pagination-fetched rows pick up the user's prior verdicts. Also
+// totals up "you confirmed N" badges per VOD group so the user can see
+// their cumulative contribution at a glance.
+function applyVoteState(scope) {
+  const root = scope || document;
+  const groupCounts = new Map();   // groupEl -> count of voted-up rows
+  const tlCardCounts = new Map();  // tl-card el -> count of voted-up rows
+  const allRows = [
+    ...root.querySelectorAll(".ev-item[data-class][data-tsec]"),
+    ...root.querySelectorAll(".row.evr[data-class][data-tsec]"),
+  ];
+  for (const row of allRows) {
+    const cls = row.dataset.class;
+    const tsec = Number(row.dataset.tsec || 0);
+    // Creator/basename live on the row itself for .row.evr; for .ev-item
+    // they hang off the .tl-card ancestor.
+    let creator = row.dataset.creator;
+    let basename = row.dataset.basename;
+    if (!creator || !basename) {
+      const card = row.closest(".tl-card, .vod-group, .vod-detail");
+      creator = creator || card?.dataset.creator;
+      basename = basename || card?.dataset.basename;
+    }
+    if (!creator || !basename || !cls) continue;
+    const key = `vote:${creator}/${basename}@${tsec.toFixed(2)}#${cls}`;
+    const v = state.eventVotes.get(key);
+    row.classList.toggle("voted-up", v === 1);
+    row.classList.toggle("voted-down", v === 0);
+    // Sync the button state too — fixes the case where rows are re-rendered
+    // (e.g. after a sort flip) and the inline-template's prevVote-rendered
+    // `voted` class would otherwise drift from localStorage.
+    const upBtn = row.querySelector(".ev-up, [data-act='up']");
+    const downBtn = row.querySelector(".ev-down, [data-act='down']");
+    upBtn?.classList.toggle("voted", v === 1);
+    downBtn?.classList.toggle("voted", v === 0);
+    if (v === 1) {
+      const grp = row.closest(".vod-group");
+      const card = row.closest(".tl-card");
+      if (grp) groupCounts.set(grp, (groupCounts.get(grp) || 0) + 1);
+      if (card) tlCardCounts.set(card, (tlCardCounts.get(card) || 0) + 1);
+    }
+  }
+  // Render "you confirmed N" pill on each VOD group header / tl-card
+  // header. Hide pill when count is zero so groups without contributions
+  // stay visually quiet.
+  const renderPill = (el, n, anchorSelector) => {
+    let pill = el.querySelector(":scope > .you-confirmed-pill");
+    if (!pill) {
+      pill = document.createElement("span");
+      pill.className = "you-confirmed-pill";
+      const anchor = el.querySelector(anchorSelector);
+      if (anchor) anchor.appendChild(pill); else el.appendChild(pill);
+    }
+    if (n > 0) {
+      pill.textContent = `✓ ${n} confirmed`;
+      pill.title = `you've confirmed ${n} event${n === 1 ? "" : "s"} in this VOD — thanks for the labels!`;
+      pill.hidden = false;
+    } else {
+      pill.hidden = true;
+    }
+  };
+  for (const [grp, n] of groupCounts) {
+    renderPill(grp, n, ".vod-group-header");
+  }
+  for (const [card, n] of tlCardCounts) {
+    renderPill(card, n, ".tl-header");
+  }
 }
 
 // --- Lucide icons ----------------------------------------------------------
@@ -1381,9 +1489,32 @@ function syncUrl() {
       params.append("event", eventLabel(cls).slug);
     }
   }
+  // Preserve the active deep-link target (?vod= + ?t=) across every
+  // syncUrl call. Without this, the very first runSearch after a deep
+  // link arrived would strip both params and the URL would degrade to
+  // `?mode=event&event=gen_popped` — un-shareable.
+  if (state.deepVod) params.set("vod", state.deepVod);
+  if (state.deepT != null) params.set("t", String(state.deepT));
   const qs = params.toString();
   const url = qs ? `?${qs}` : location.pathname;
   history.replaceState(null, "", url);
+}
+
+// Update the deep-link target so the URL keeps reflecting "what the
+// player is showing right now" as the user clicks around. Called from
+// every event-mode seek path (timeline tick, accordion row, list-view
+// row) and the deep-link branch of bootFromUrl.
+function setDeepLink(creator, basename, tsec) {
+  if (!creator || !basename) return;
+  state.deepVod = `${creator}/${basename}`;
+  state.deepT = Number(tsec) || 0;
+  syncUrl();
+}
+function clearDeepLink() {
+  if (state.deepVod == null && state.deepT == null) return;
+  state.deepVod = null;
+  state.deepT = null;
+  syncUrl();
 }
 
 async function runSearch() {
@@ -1801,6 +1932,9 @@ function renderVodTimelineCard(v) {
 
 function attachTimelineHandlers() {
   refreshIcons();
+  // Apply persisted vote state up front so reload + scroll-back reveal
+  // the user's prior confirmations on every freshly-rendered card.
+  applyVoteState();
   $$(".tl-tick").forEach((tick) => {
     tick.addEventListener("click", (ev) => {
       ev.stopPropagation();
@@ -1811,6 +1945,9 @@ function attachTimelineHandlers() {
       tick.classList.add("active");
       const card = tick.closest(".tl-card");
       showTwitchPlayer(card || tick, tv, tsec);
+      if (card?.dataset.creator && card?.dataset.basename) {
+        setDeepLink(card.dataset.creator, card.dataset.basename, tsec);
+      }
     });
   });
   // --- Accordion event-row clicks → seek floating player ---
@@ -1828,6 +1965,9 @@ function attachTimelineHandlers() {
     row.classList.add("now-playing");
     const card = row.closest(".tl-card");
     showTwitchPlayer(card || row, tv, tsec);
+    if (card?.dataset.creator && card?.dataset.basename) {
+      setDeepLink(card.dataset.creator, card.dataset.basename, tsec);
+    }
   }
   $$(".ev-item").forEach((row) => {
     row.addEventListener("click", (ev) => {
@@ -1897,6 +2037,9 @@ function attachTimelineHandlers() {
       saveEventVotes();
       row.querySelector(".ev-up")?.classList.remove("voted");
       row.querySelector(".ev-down")?.classList.remove("voted");
+      row.classList.remove("voted-up", "voted-down");
+      // Re-tally the parent group's reward pill.
+      applyVoteState(row.closest(".tl-card") || row.closest(".vod-group") || document);
       toast("vote cleared");
       return;
     }
@@ -1904,7 +2047,10 @@ function attachTimelineHandlers() {
     saveEventVotes();
     row.querySelector(".ev-up")?.classList.toggle("voted", label === 1);
     row.querySelector(".ev-down")?.classList.toggle("voted", label === 0);
-    toast(label === 1 ? "thanks — marked correct" : "thanks — marked false-positive");
+    row.classList.toggle("voted-up", label === 1);
+    row.classList.toggle("voted-down", label === 0);
+    applyVoteState(row.closest(".tl-card") || row.closest(".vod-group") || document);
+    toast(label === 1 ? "thanks — marked correct ✓" : "thanks — marked false-positive");
     fetch(`/api/event_label/append`, {
       method: "POST",
       credentials: "same-origin",
@@ -1922,6 +2068,8 @@ function attachTimelineHandlers() {
         saveEventVotes();
         row.querySelector(".ev-up")?.classList.remove("voted");
         row.querySelector(".ev-down")?.classList.remove("voted");
+        row.classList.remove("voted-up", "voted-down");
+        applyVoteState(row.closest(".tl-card") || row.closest(".vod-group") || document);
         toast("session expired — log in again to vote");
       }
     }).catch(() => { /* offline ok — local state still recorded */ });
@@ -2092,7 +2240,10 @@ function eventRow(e) {
     ? `<div class="player twitch-player" data-tv="${escape(e.tv)}" data-time="${twitchTime}" data-tsec="${e.t}" hidden></div>`
     : "";
   return `
-    <div class="row event evr vod-row" data-key="${escape(hitKey(h))}">
+    <div class="row event evr vod-row" data-key="${escape(hitKey(h))}"
+         data-creator="${escape(e.c)}" data-basename="${escape(e.b)}"
+         data-class="${escape(e.e)}" data-tsec="${e.t}" data-score="${e.s.toFixed(3)}"
+         data-tv="${escape(e.tv || "")}">
       <span class="evr-cls" style="--c:${color}" title="${escape(meta.name)}">
         <span class="evr-cls-dot"></span>
         <span class="evr-cls-name">${escape(meta.name)}</span>
@@ -2140,6 +2291,9 @@ function renderEventListGrouped(hits) {
 
 function attachRowHandlers() {
   refreshIcons();
+  // Same vote-state pass for list-view event rows + grouped headers so
+  // the "you confirmed N" pill totals up across reloads.
+  applyVoteState();
   $$(".clip-row[data-id]").forEach((el) => {
     // Some clip-row variants (e.g. browse cards) reuse the .clip-row class
     // without rendering a .head, so guard against null. Without this the
@@ -2243,6 +2397,8 @@ function submitVote(rec, label, btn, row) {
     saveEventVotes();
     upBtn?.classList.remove("voted");
     downBtn?.classList.remove("voted");
+    row?.classList.remove("voted-up", "voted-down");
+    if (row) applyVoteState(row.closest(".vod-group") || row.closest(".tl-card") || document);
     toast("vote cleared");
     return;
   }
@@ -2250,7 +2406,10 @@ function submitVote(rec, label, btn, row) {
   saveEventVotes();
   upBtn?.classList.toggle("voted", label === 1);
   downBtn?.classList.toggle("voted", label === 0);
-  toast(label === 1 ? "thanks — marked correct" : "thanks — marked false-positive");
+  row?.classList.toggle("voted-up", label === 1);
+  row?.classList.toggle("voted-down", label === 0);
+  if (row) applyVoteState(row.closest(".vod-group") || row.closest(".tl-card") || document);
+  toast(label === 1 ? "thanks — marked correct ✓" : "thanks — marked false-positive");
   fetch(`/api/event_label/append`, {
     method: "POST",
     credentials: "same-origin",
@@ -2265,6 +2424,8 @@ function submitVote(rec, label, btn, row) {
       saveEventVotes();
       upBtn?.classList.remove("voted");
       downBtn?.classList.remove("voted");
+      row?.classList.remove("voted-up", "voted-down");
+      if (row) applyVoteState(row.closest(".vod-group") || row.closest(".tl-card") || document);
       toast("session expired — log in again to vote");
     }
   }).catch(() => { /* offline ok — local cache still recorded */ });
@@ -2540,6 +2701,15 @@ function togglePlayer(el) {
       return;
     }
     showTwitchPlayer(el, vod, tsec);
+    // Update the share-link target so the URL bar tracks whatever event
+    // the user just played — list-view rows live inside .vod-group with
+    // creator/basename data, list-view evr-rows fall back to that.
+    if (state.mode === "event") {
+      const grp = el.closest(".vod-group");
+      const c = grp?.dataset.creator || el.dataset.creator;
+      const b = grp?.dataset.basename || el.dataset.basename;
+      if (c && b) setDeepLink(c, b, tsec);
+    }
     return;
   }
 
@@ -2817,6 +2987,9 @@ $("#q").addEventListener("input", () => {
   hideRecent();
   syncQClear();
   syncQPasteHint();
+  // Typing a new query is a context change — drop the deep-link target
+  // so the URL stops advertising a stale event.
+  clearDeepLink();
   debounce();
 });
 // Recent-search dropdown opens only on explicit user gestures — not on the
@@ -2842,6 +3015,7 @@ $("#qclear").addEventListener("click", () => {
   $("#q").focus();
   syncQClear();
   syncQPasteHint();
+  clearDeepLink();
   runSearch();
 });
 $("#qPasteSubmit").addEventListener("click", () => {
@@ -2849,9 +3023,21 @@ $("#qPasteSubmit").addEventListener("click", () => {
   const det = detectVodInQuery(v);
   if (det) openSubmit(det.url);
 });
-$("#creator").addEventListener("change", runSearch);
+$("#creator").addEventListener("change", () => {
+  // Switching creator invalidates a stored deep-link target (the new
+  // creator likely has different VODs). Clear before runSearch so syncUrl
+  // doesn't write back the stale params.
+  clearDeepLink();
+  runSearch();
+});
 $("#modes").querySelectorAll("button").forEach((b) => {
-  b.onclick = () => switchMode(b.dataset.mode);
+  b.onclick = () => {
+    // Manual mode-tab click — drop the deep-link target. (Programmatic
+    // switchMode calls from bootFromUrl don't pass through this handler,
+    // so the deep link survives the initial render.)
+    clearDeepLink();
+    switchMode(b.dataset.mode);
+  };
 });
 
 function switchMode(mode) {
@@ -3145,6 +3331,11 @@ async function bootFromUrl() {
   const deepClip = params.get("clip");
   const deepVod = params.get("vod");
   const deepT = params.get("t");
+  // Stash the target into state immediately so the very first syncUrl()
+  // (called inside runSearch) keeps both params in the URL bar instead
+  // of rewriting it down to `?mode=event&event=…`.
+  if (deepVod) state.deepVod = deepVod;
+  if (deepT != null && deepT !== "") state.deepT = Number(deepT);
   // ?submit=1 opens the submission panel on first paint; ?submit=<url> also prefills
   const submitOpen = params.get("submit");
   if (q) $("#q").value = q;
@@ -3180,21 +3371,47 @@ async function bootFromUrl() {
     return;
   }
   if (deepVod && deepT && mode === "event") {
-    // Event-mode deep link: filter chips already loaded, just trigger
-    // the search + focus the matching event row once it renders.
-    switchMode("event");
-    setTimeout(() => {
-      const targetT = Number(deepT);
-      const rows = document.querySelectorAll(".row.event");
-      for (const row of rows) {
-        const k = row.dataset.key || "";
-        if (k.includes(`${deepVod}@${targetT}`) || k.startsWith(`event:${deepVod}@${targetT}#`)) {
-          row.scrollIntoView({ block: "center" });
-          togglePlayer(row);
-          break;
-        }
-      }
-    }, 700);
+    // Event-mode deep link: pre-narrow to the target VOD's creator so the
+    // result list is guaranteed to include it (a global "all gen_popped"
+    // query can paginate the cherrieblossomm hit off-screen). Then await
+    // the search + scroll-focus the matching row. The earlier setTimeout
+    // raced against runSearch and fired before the rows existed.
+    const slash = deepVod.indexOf("/");
+    const dvCreator = slash > 0 ? deepVod.slice(0, slash) : "";
+    if (dvCreator && !creator) {
+      $("#creator").value = dvCreator;
+    }
+    state.mode = "event";
+    $("#modes").querySelectorAll("button").forEach((b) => {
+      b.classList.toggle("active", b.dataset.mode === "event");
+    });
+    await runSearch();
+    // Walk both the timeline-view ev-item and the list-view .row.evr.
+    // Match on data-key (which already encodes "event:<creator>/<basename>@<t>#<class>")
+    // — but tolerate float-precision drift by also matching on data-tsec.
+    const targetT = Number(deepT);
+    const candidates = [
+      ...document.querySelectorAll(".ev-item"),
+      ...document.querySelectorAll(".row.evr"),
+    ];
+    let matched = null;
+    for (const row of candidates) {
+      const k = row.dataset.key || "";
+      const ts = Number(row.dataset.tsec || row.dataset.tSec || 0);
+      const sameVod = k.includes(`:${deepVod}@`);
+      const sameT = Math.abs(ts - targetT) < 0.05;
+      if (sameVod && sameT) { matched = row; break; }
+    }
+    if (matched) {
+      matched.scrollIntoView({ block: "center" });
+      // Open the parent accordion (timeline view) so the row is visible
+      // before we click its play button.
+      const det = matched.closest("details");
+      if (det) det.open = true;
+      const btn = matched.querySelector(".ev-play, .evr-play");
+      if (btn) btn.click();
+      else matched.click();
+    }
     return;
   }
   if (deepVod) {
