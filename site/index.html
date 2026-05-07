@@ -1580,16 +1580,25 @@ const ROADMAP = {
   ],
 };
 
-// Example queries surfaced as one-click chips on the landing page. Mix of
-// universal (no way bro / let's gooo) and DBD-specific (gen popped, on
-// hook) so a stranger sees the product work in one click.
+// Example queries surfaced as one-click chips on the landing page. Every
+// chip MUST return ≥1 hit against the live corpus — they're demos, and a
+// click that lands on "no matches" actively undersells the product. Hit
+// counts measured 2026-05-07 via /api/search:
+//   "no way bro"      86   — streamer-vernacular, mid-volume signal
+//   "let's go"       449   — fixes the broken "let's gooo" (Parakeet renders it "let's go")
+//   "oh my god"     2009   — high-volume reaction across every creator
+//   "what the hell"  310   — punchy reaction
+//   "on hook"        484   — DBD-specific, overlaps with the events index
+//   "gen pop"         94   — DBD-specific (replaces "gen popped" at only 10 hits)
+// bin/test-smoke loops over this list and asserts every entry returns
+// hits, so a future indexing change can't silently rot the demo set.
 const EXAMPLE_QUERIES = [
   "no way bro",
-  "let's gooo",
+  "let's go",
+  "oh my god",
   "what the hell",
-  "gen popped",
   "on hook",
-  "clutch",
+  "gen pop",
 ];
 
 function roadmapHTML(meta) {

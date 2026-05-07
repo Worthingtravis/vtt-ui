@@ -101,6 +101,22 @@ else
   bad "/api/vod/availability jagerzgoober/adept-roulette — HTTP $avail_code (serve.py may need restart)"
 fi
 
+echo "== Demo-chip queries =="
+# Every example chip on the landing page must return ≥1 hit against the
+# live corpus. A demo chip that lands on "no matches" undersells the
+# product. The site-side EXAMPLE_QUERIES constant is the source of
+# truth; this list mirrors it.
+for q in "no way bro" "let's go" "oh my god" "what the hell" "on hook" "gen pop"; do
+  q_enc=$(python3 -c "import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1]))" "$q")
+  total=$(curl -s --compressed "$BASE/api/search?q=$q_enc" 2>/dev/null \
+    | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('n_total',0))" 2>/dev/null)
+  if [ -n "$total" ] && [ "$total" != "0" ]; then
+    ok "demo chip \"$q\" → $total hits"
+  else
+    bad "demo chip \"$q\" → 0 hits (broken demo on landing)"
+  fi
+done
+
 if [ $fail -gt 0 ]; then
   printf "\n\033[31mFAILED %d check(s)\033[0m\n" "$fail"
   exit 1
