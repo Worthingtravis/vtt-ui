@@ -2213,6 +2213,29 @@ let _anchorRaf = 0;             // rAF handle for scroll/resize re-anchor
 let _anchorContainer = null;    // the .tl-card / .vod-group / .row whose visibility hides the panel
 let _spacerRef = null;          // direct handle to the inserted .player-spacer (so detach can remove it even if it lives outside the container)
 
+// Multi-shot seek with backoff. Twitch.Player can be in any of: (a) iframe
+// still loading, (b) postMessage handshake in progress, (c) READY but the
+// underlying video is still buffering. In any of those states .seek() can
+// return without error yet do nothing. Re-issuing every 250ms for ~2s
+// reliably catches every realistic race we've seen, including the constant
+// "click ▶ → starts at 0:00 instead of the target second" report.
+function seekTwitchSafely(target) {
+  const t = Number(target) || 0;
+  for (const delay of [0, 250, 600, 1100, 1800]) {
+    setTimeout(() => {
+      const p = _twitchPlayer;
+      if (!p) return;
+      try {
+        const now = typeof p.getCurrentTime === "function" ? p.getCurrentTime() : null;
+        // If we're already within 1s of the target, leave it alone — avoids
+        // resetting the user's manual scrub on a late retry.
+        if (typeof now === "number" && Math.abs(now - t) < 1) return;
+      } catch {}
+      try { p.seek(t); p.play(); } catch {}
+    }, delay);
+  }
+}
+
 function ensureTwitchPanel() {
   if (_twitchPanel) return _twitchPanel;
   const panel = document.createElement("div");
@@ -2376,10 +2399,7 @@ function showTwitchPlayer(row, vod, seconds) {
 
   // Same VOD → just seek. The iframe stays alive, no reload.
   if (_twitchVod === vod && _twitchPlayer) {
-    try {
-      _twitchPlayer.seek(seconds);
-      _twitchPlayer.play();
-    } catch (e) { /* player not yet ready — best effort */ }
+    seekTwitchSafely(seconds);
     return;
   }
   // Different VOD (or first mount) → recreate inside the panel body.
@@ -2397,6 +2417,16 @@ function showTwitchPlayer(row, vod, seconds) {
       parent: [parent],
     });
     _twitchVod = vod;
+    // Twitch sometimes ignores the constructor `time` param if the
+    // player isn't past the handshake when it tries to apply. Re-seek
+    // on READY and again as a safety net — fixes the "starts at 0:00
+    // instead of where I clicked" bug.
+    try {
+      _twitchPlayer.addEventListener(Twitch.Player.READY, () => {
+        seekTwitchSafely(seconds);
+      });
+    } catch {}
+    seekTwitchSafely(seconds);
     return;
   }
   // Fallback if embed.js hasn't loaded — raw iframe. Still no reload between
