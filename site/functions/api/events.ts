@@ -87,7 +87,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
   const vodFilter = (url.searchParams.get("vod") || "").trim();  // "<c>/<b>"
   const minScoreRaw = url.searchParams.get("min_score");
   const minScore = minScoreRaw ? Number(minScoreRaw) : 0;
-  const limit = Math.min(1000, Math.max(1, Number(url.searchParams.get("limit") || 200)));
+  const limit = Math.min(5000, Math.max(1, Number(url.searchParams.get("limit") || 2000)));
 
   const [eventsIdx, metaIdx] = await Promise.all([
     loadIndex<EventsIndex>(env.PUBLIC_BUCKET, "events/index.json",

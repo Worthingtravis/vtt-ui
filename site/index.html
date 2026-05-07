@@ -1127,9 +1127,11 @@ async function runEventSearch(creator, reqId) {
     params.append("event", eventLabel(cls).slug);
   }
   if (creator) params.set("creator", creator);
-  // Hard cap: 200 hits is enough to feel rich without blowing the DOM
-  // (xx_miraculous_xx alone is 1.7k events across all classes).
-  params.set("limit", "200");
+  // Fetch ~all events so we don't drop entire VODs from the timeline view
+  // (a global score-desc sort can hide a quieter creator's events behind a
+  // louder creator's top 200). The events index is ~250KB across the
+  // entire corpus today, so this is cheap.
+  params.set("limit", "2000");
 
   let resp;
   try {
