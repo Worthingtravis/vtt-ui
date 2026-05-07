@@ -2267,27 +2267,31 @@ let _anchorRaf = 0;             // rAF handle for scroll/resize re-anchor
 let _anchorContainer = null;    // the .tl-card / .vod-group / .row whose visibility hides the panel
 let _spacerRef = null;          // direct handle to the inserted .player-spacer (so detach can remove it even if it lives outside the container)
 
-// Multi-shot seek with backoff. Twitch.Player can be in any of: (a) iframe
-// still loading, (b) postMessage handshake in progress, (c) READY but the
-// underlying video is still buffering. In any of those states .seek() can
-// return without error yet do nothing. Re-issuing every 250ms for ~2s
-// reliably catches every realistic race we've seen, including the constant
-// "click ▶ → starts at 0:00 instead of the target second" report.
+// Single-shot seek + one verification retry. The earlier multi-shot
+// version (5 retries at 0/250/600/1100/1800ms) caused "overplay" — once
+// the player had landed and was playing past the target, the late retries
+// fired .seek(t) again and yanked playback back. Now: issue once, then at
+// 400ms verify we're at-or-past the target; if not, try once more. A token
+// counter cancels pending retries when a newer seek call arrives so back-
+// to-back tick clicks don't have stale retries fighting over the player.
+let _seekToken = 0;
 function seekTwitchSafely(target) {
   const t = Number(target) || 0;
-  for (const delay of [0, 250, 600, 1100, 1800]) {
-    setTimeout(() => {
-      const p = _twitchPlayer;
-      if (!p) return;
-      try {
-        const now = typeof p.getCurrentTime === "function" ? p.getCurrentTime() : null;
-        // If we're already within 1s of the target, leave it alone — avoids
-        // resetting the user's manual scrub on a late retry.
-        if (typeof now === "number" && Math.abs(now - t) < 1) return;
-      } catch {}
-      try { p.seek(t); p.play(); } catch {}
-    }, delay);
-  }
+  const myToken = ++_seekToken;
+  const p = _twitchPlayer;
+  if (!p) return;
+  try { p.seek(t); p.play(); } catch {}
+  setTimeout(() => {
+    if (myToken !== _seekToken) return; // a newer seek superseded us
+    const cp = _twitchPlayer;
+    if (!cp) return;
+    try {
+      const now = typeof cp.getCurrentTime === "function" ? cp.getCurrentTime() : null;
+      // We're either AT the target or playing past it — success, bail.
+      if (typeof now === "number" && now >= t - 1) return;
+      cp.seek(t); cp.play();
+    } catch {}
+  }, 400);
 }
 
 function ensureTwitchPanel() {
