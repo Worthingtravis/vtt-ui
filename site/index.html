@@ -13,10 +13,41 @@
        lucide.createIcons() swaps the <i> tag for an inline SVG. The
        fallback content shows if the script ever fails to load. -->
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js" defer></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Sora:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
-    :root { color-scheme: dark; }
+    :root {
+      color-scheme: dark;
+      /* Type system: Sora = display + body (geometric humanist with character),
+         JetBrains Mono = data (timestamps, scores, counts — the parts users
+         actually read precision from). */
+      --font-display: 'Sora', system-ui, sans-serif;
+      --font-body: 'Sora', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+      /* Surface ramp — darker at the page bg, lifts as nesting deepens.
+         Cards = bg-1, accordion-open + group-headers = bg-2,
+         min-score readout pill / hover highlights = bg-3. */
+      --bg-0: #08090f;
+      --bg-1: #0f111a;
+      --bg-2: #161a26;
+      --bg-3: #1f2433;
+      --line: #232838;
+      --line-soft: #1c2030;
+      /* Ink ramp — primary headlines, body, secondary, tertiary. */
+      --ink-0: #f1f3f9;
+      --ink-1: #c1c6d4;
+      --ink-2: #8a90a3;
+      --ink-3: #555c70;
+      /* Accent + semantic */
+      --accent: #38bdf8;
+      --accent-soft: rgba(56, 189, 248, 0.14);
+      --good: #6ee7b7;
+      --bad: #fca5a5;
+      --gold: #fde047;
+    }
     html, body { max-width: 100vw; overflow-x: hidden; }
-    body { font-family: ui-sans-serif, system-ui, sans-serif; background: #0b1020; color: #e5e7eb; margin: 0; line-height: 1.5; }
+    body { font-family: var(--font-body); background: var(--bg-0); color: var(--ink-1); margin: 0; line-height: 1.5; -webkit-font-smoothing: antialiased; }
     /* Defense in depth — never let cards push past the viewport on narrow
        screens. Anything inside that's intrinsically wider (e.g. the timeline
        track ticks) gets clipped rather than triggering horizontal scroll. */
@@ -340,6 +371,31 @@
     .vod-detail .vd-no-tv { color: #6b7280; font-size: 12px; font-style: italic; }
     .vod-detail .vd-hint { color: #6b7280; font-size: 12px; margin-top: 16px; padding-top: 12px; border-top: 1px solid #1f2937; }
     .vod-detail.now-playing { outline: 2px solid #38bdf8; outline-offset: 2px; }
+    /* No-events panel — surfaced under the VOD detail card when xc_*.json
+       sidecars haven't been generated yet. Editorial layout: vertical accent
+       stripe on the left, eyebrow + headline + lede + class chips + CTA.
+       Doubles as the future paywall hook for "kick off a scan". */
+    .ne-card { display: grid; grid-template-columns: 4px 1fr; background: var(--bg-1); border: 1px solid var(--line-soft); border-radius: 12px; max-width: 720px; margin: 16px auto; overflow: hidden; }
+    .ne-stripe { background: linear-gradient(180deg, #38bdf8 0%, #6441a5 100%); }
+    .ne-body { padding: 22px 26px 24px; display: flex; flex-direction: column; gap: 12px; }
+    .ne-eyebrow { font: 500 11px var(--font-display); color: var(--ink-2); letter-spacing: 0.12em; text-transform: uppercase; }
+    .ne-title { font: 600 19px/1.2 var(--font-display); color: var(--ink-0); letter-spacing: -0.012em; }
+    .ne-lede { color: var(--ink-1); font-size: 13px; line-height: 1.55; margin: 0; max-width: 56ch; }
+    .ne-classes { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+    .ne-cls { display: inline-flex; align-items: center; gap: 7px; padding: 4px 10px; background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: 999px; font: 500 11px var(--font-mono); color: var(--ink-1); letter-spacing: -0.01em; }
+    .ne-cls::before { content: ""; display: inline-block; width: 6px; height: 6px; background: var(--c, var(--ink-3)); border-radius: 50%; box-shadow: 0 0 0 2px rgba(0,0,0,.3); }
+    .ne-actions { display: flex; align-items: center; flex-wrap: wrap; gap: 14px; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--line-soft); }
+    .ne-cta { display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px; background: linear-gradient(135deg, #38bdf8 0%, #6441a5 100%); color: #fff; border: 0; border-radius: 8px; font: 500 13px var(--font-display); cursor: pointer; letter-spacing: -0.005em; box-shadow: 0 4px 16px -8px rgba(56,189,248,.6); transition: transform .12s, box-shadow .12s; }
+    .ne-cta:hover { transform: translateY(-1px); box-shadow: 0 8px 24px -8px rgba(56,189,248,.8); }
+    .ne-cta [data-lucide], .ne-cta svg.lucide { width: 14px; height: 14px; }
+    .ne-cta-pill { background: rgba(0,0,0,.28); color: rgba(255,255,255,.85); font: 500 9px var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; margin-left: 4px; }
+    .ne-cta-note { font: 400 11px var(--font-mono); color: var(--ink-3); flex: 1; min-width: 200px; line-height: 1.4; }
+    @media (max-width: 720px) {
+      .ne-body { padding: 18px 20px 20px; gap: 10px; }
+      .ne-title { font-size: 17px; }
+      .ne-lede { font-size: 12px; }
+      .ne-cta-note { font-size: 10px; }
+    }
     .vod-detail-empty { background: #131a3a; border: 1px solid #312e81; border-radius: 10px; padding: 32px; max-width: 560px; margin: 32px auto; text-align: center; }
     .vod-detail-empty .vd-title { color: #fde047; font-size: 16px; margin-bottom: 8px; }
     .vod-detail-empty .vd-help { color: #9ca3af; font-size: 13px; line-height: 1.5; }
@@ -354,38 +410,54 @@
     .events-view-toggle { display: inline-flex; gap: 2px; padding: 2px; background: #1e293b; border-radius: 6px; margin-left: 8px; }
     .events-view-toggle button { background: transparent; border: 0; color: #94a3b8; padding: 4px 10px; font-size: 11px; cursor: pointer; border-radius: 4px; font-family: inherit; min-width: 0; }
     .events-view-toggle button.active { background: #334155; color: #e0f2fe; }
-    .tl-card { background: #0f172a; border: 1px solid #1f2937; border-radius: 8px; padding: 10px 14px; margin-bottom: 10px; }
-    .tl-card.now-playing { outline: 1px solid #38bdf8; outline-offset: 2px; border-color: #1e293b; }
-    .tl-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
-    .tl-vod-meta { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; }
-    .tl-vod-meta .creator { color: #a5b4fc; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; flex-shrink: 0; }
-    .tl-vod-meta .creator .badge { background: #4338ca; color: #e0e7ff; padding: 1px 6px; border-radius: 3px; margin-right: 6px; font-size: 9px; }
-    .tl-title { color: #e0e7ff; font-size: 13px; font-weight: 500; min-width: 0; overflow-wrap: anywhere; word-break: break-word; line-height: 1.3; }
-    .tl-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-    .tl-count { color: #94a3b8; font-size: 11px; padding: 2px 8px; background: #1e293b; border-radius: 10px; }
-    .tl-track { position: relative; height: 38px; background: #131a3a; border: 1px solid #1f2937; border-radius: 4px; }
-    .tl-ruler { position: relative; height: 14px; border-bottom: 1px solid #1f2937; }
-    .tl-ruler-mark { position: absolute; top: 0; transform: translateX(-50%); font-size: 9px; color: #6b7280; padding: 1px 4px; font-variant-numeric: tabular-nums; }
-    .tl-ruler-mark:first-child { transform: translateX(0); padding-left: 0; }
-    .tl-ruler-mark:last-child { transform: translateX(-100%); padding-right: 0; }
-    .tl-tick { position: absolute; bottom: 4px; width: 4px; height: 16px; border-radius: 2px; cursor: pointer; transition: transform .08s, box-shadow .08s; transform: translateX(-50%); }
-    .tl-tick:hover { transform: translateX(-50%) scaleY(1.3); box-shadow: 0 0 0 2px rgba(56, 189, 248, 0.5); z-index: 2; }
-    .tl-tick.active { box-shadow: 0 0 0 2px #38bdf8; transform: translateX(-50%) scaleY(1.4); z-index: 3; }
-    .tl-footer { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 8px; font-size: 11px; color: #cbd5e1; }
-    .tl-legend { display: inline-flex; align-items: center; gap: 4px; }
-    .tl-legend::before { content: ""; display: inline-block; width: 8px; height: 8px; background: var(--c, #94a3b8); border-radius: 50%; }
-    .tl-help { color: #6b7280; font-size: 11px; margin: 8px 0 12px; padding: 6px 10px; background: #131a3a; border: 1px solid #1f2937; border-radius: 4px; }
+    /* VOD card: editorial layout — meta line on top (creator badge in display
+       caps, twitch link), big title, then a generous timeline strip, then a
+       quiet legend that doubles as nav, then the accordion stack. The whole
+       thing reads like a track listing for one VOD's events. */
+    .tl-card { background: var(--bg-1); border: 1px solid var(--line-soft); border-radius: 12px; padding: 0; margin-bottom: 16px; overflow: hidden; }
+    .tl-card.now-playing { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent-soft), 0 8px 28px -16px rgba(56,189,248,.5); }
+    .tl-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; padding: 18px 20px 12px; }
+    .tl-vod-meta { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
+    .tl-vod-meta .creator { display: inline-flex; align-items: center; gap: 8px; font: 500 11px var(--font-display); color: var(--ink-2); letter-spacing: 0.08em; text-transform: uppercase; }
+    .tl-vod-meta .creator .badge { background: linear-gradient(135deg, #6441a5 0%, #4338ca 100%); color: #f3e8ff; font: 600 9px var(--font-display); letter-spacing: 0.1em; padding: 3px 7px; border-radius: 4px; text-transform: uppercase; }
+    .tl-title { font: 600 17px/1.25 var(--font-display); color: var(--ink-0); letter-spacing: -0.012em; min-width: 0; overflow-wrap: anywhere; word-break: break-word; }
+    .tl-actions { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+    .tl-count { font: 500 11px var(--font-mono); color: var(--ink-2); padding: 5px 12px; background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: 999px; font-variant-numeric: tabular-nums; }
+    /* Timeline strip — dominant visual element on the card. Slightly elevated
+       gradient floor + subtle inset shadow so the colored ticks stand out. */
+    .tl-track { position: relative; height: 46px; margin: 0 20px; background: linear-gradient(180deg, #0a0c14 0%, #14182a 100%); border: 1px solid var(--line-soft); border-radius: 6px; box-shadow: inset 0 1px 0 rgba(255,255,255,.02); }
+    .tl-ruler { position: relative; height: 16px; border-bottom: 1px dashed var(--line-soft); }
+    .tl-ruler-mark { position: absolute; top: 0; transform: translateX(-50%); font: 500 9px var(--font-mono); color: var(--ink-3); padding: 2px 4px; font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+    .tl-ruler-mark:first-child { transform: translateX(0); padding-left: 6px; }
+    .tl-ruler-mark:last-child { transform: translateX(-100%); padding-right: 6px; }
+    .tl-tick { position: absolute; bottom: 4px; width: 3px; height: 20px; border-radius: 2px; cursor: pointer; transition: transform .1s ease, box-shadow .1s; transform: translateX(-50%); opacity: 0.85; }
+    .tl-tick:hover { opacity: 1; transform: translateX(-50%) scaleY(1.3); box-shadow: 0 0 0 2px rgba(56,189,248,.4); z-index: 2; }
+    .tl-tick.active { opacity: 1; box-shadow: 0 0 0 2px var(--accent), 0 0 12px var(--accent-soft); transform: translateX(-50%) scaleY(1.4); z-index: 3; }
+    /* Class summary line — lives between the timeline and the accordion stack.
+       Each chip is clickable and visually pairs with the matching accordion's
+       left accent strip. */
+    .tl-footer { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px 20px 14px; font: 500 11px var(--font-mono); color: var(--ink-1); }
+    .tl-legend { display: inline-flex; align-items: center; gap: 8px; padding: 5px 11px; background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: 999px; cursor: default; transition: background .12s, border-color .12s; font-variant-numeric: tabular-nums; }
+    .tl-legend::before { content: ""; display: inline-block; width: 7px; height: 7px; background: var(--c, var(--ink-3)); border-radius: 50%; box-shadow: 0 0 0 2px rgba(0,0,0,.3); }
+    .tl-help { color: var(--ink-3); font: 400 11px var(--font-mono); margin: 8px 0 16px; padding: 10px 14px; background: var(--bg-1); border: 1px solid var(--line-soft); border-radius: 8px; letter-spacing: -0.01em; }
     /* List-view event grouping: rows are bucketed by VOD with a header bar
        that doubles as the player-anchor target (player docks above this). */
     .vod-group { background: #0f172a; border: 1px solid #1f2937; border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
     .vod-group.now-playing { outline: 1px solid #38bdf8; outline-offset: 2px; border-color: #1e293b; }
-    .vod-group-header { display: flex; align-items: center; gap: 10px; padding: 8px 14px; background: #131a3a; border-bottom: 1px solid #1f2937; min-height: 32px; }
-    .vod-group-header .creator { color: #a5b4fc; font-size: 11px; text-transform: uppercase; letter-spacing: .04em; flex-shrink: 0; }
-    .vod-group-header .creator .badge { background: #4338ca; color: #e0e7ff; padding: 1px 6px; border-radius: 3px; margin-right: 6px; font-size: 9px; }
-    .vod-group-header .title { color: #e0e7ff; font-size: 13px; font-weight: 500; min-width: 0; flex: 1; overflow-wrap: anywhere; word-break: break-word; line-height: 1.3; }
-    .vod-group-header .vg-count { color: #94a3b8; font-size: 11px; padding: 2px 8px; background: #1e293b; border-radius: 10px; flex-shrink: 0; }
-    .vod-group-header .vg-twitch { color: #7dd3fc; font-size: 11px; text-decoration: none; flex-shrink: 0; }
-    .vod-group-header .vg-twitch:hover { text-decoration: underline; }
+    /* VOD group / browse card header — pills (creator, date, count, links)
+       sit on row 1; title ALWAYS occupies its own full-width row beneath via
+       order:99. The previous `flex: 1` made the title share a single row
+       with all the pills, which on narrow viewports squeezed it to a few
+       pixels and (with overflow-wrap:anywhere) broke text into a vertical
+       letter stack. Title-on-own-row sidesteps the squeeze entirely. */
+    .vod-group-header { display: flex; flex-wrap: wrap; align-items: center; column-gap: 12px; row-gap: 6px; padding: 12px 16px; background: var(--bg-2); border-bottom: 1px solid var(--line-soft); }
+    .vod-group-header .creator { display: inline-flex; align-items: center; gap: 7px; font: 500 11px var(--font-display); color: var(--ink-2); letter-spacing: 0.08em; text-transform: uppercase; flex-shrink: 0; }
+    .vod-group-header .creator .badge { background: linear-gradient(135deg, #6441a5 0%, #4338ca 100%); color: #f3e8ff; font: 600 9px var(--font-display); letter-spacing: 0.1em; padding: 3px 7px; border-radius: 4px; text-transform: uppercase; }
+    .vod-group-header .title { flex: 1 1 100%; order: 99; font: 600 17px/1.25 var(--font-display); color: var(--ink-0); letter-spacing: -0.012em; min-width: 0; overflow-wrap: anywhere; margin: 4px 0 0; }
+    .vod-group-header .vg-count { font: 500 11px var(--font-mono); color: var(--ink-2); padding: 4px 10px; background: var(--bg-1); border: 1px solid var(--line-soft); border-radius: 999px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+    .vod-group-header .vg-twitch { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); font: 500 11px var(--font-mono); text-decoration: none; flex-shrink: 0; padding: 3px 0; opacity: 0.85; transition: opacity .12s; }
+    .vod-group-header .vg-twitch:hover { opacity: 1; text-decoration: underline; }
+    .vod-group-header .vg-twitch [data-lucide], .vod-group-header .vg-twitch svg.lucide { width: 12px; height: 12px; }
     .vod-group-body > .row { border-radius: 0; border-left: 0; border-right: 0; border-top: 0; }
     .vod-group-body > .row:last-child { border-bottom: 0; }
     /* Invisible reserved-space marker that the anchored player docks into.
@@ -395,35 +467,60 @@
     /* Default-browse view (mode=vod or mode=all + creator) reuses .vod-group
        chrome with extra header pills (date, duration) + an event-counts chip
        row in the body slot instead of event rows. */
-    .vod-group-header .vg-date { color: #cbd5e1; font-size: 11px; padding: 2px 8px; background: #1e293b; border-radius: 10px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
-    .vod-group-header .vg-dur { color: #94a3b8; font-size: 11px; flex-shrink: 0; font-variant-numeric: tabular-nums; }
+    .vod-group-header .vg-date { font: 500 11px var(--font-mono); color: var(--ink-1); padding: 4px 10px; background: var(--bg-1); border: 1px solid var(--line-soft); border-radius: 999px; flex-shrink: 0; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
+    .vod-group-header .vg-dur { font: 500 11px var(--font-mono); color: var(--ink-2); flex-shrink: 0; font-variant-numeric: tabular-nums; letter-spacing: -0.01em; }
     .browse-evchips { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px 14px; }
     .browse-evchip { display: inline-flex; align-items: center; gap: 4px; padding: 3px 8px; background: #131a3a; border: 1px solid #1f2937; border-radius: 10px; color: #e0e7ff; font-size: 11px; }
     .browse-evchip::before { content: ""; display: inline-block; width: 6px; height: 6px; background: var(--c, #94a3b8); border-radius: 50%; }
     .browse-evchip-none { color: #6b7280; background: transparent; border: 1px dashed #1f2937; }
     .browse-evchip-none::before { background: transparent; }
-    /* Per-class accordion sections inside each VOD card. Drill down from
-       the timeline overview into the actual list of events without leaving
-       the card. Each section gets its own sort + score-filter controls. */
-    .tl-accordions { margin-top: 10px; border-top: 1px solid #1f2937; padding-top: 8px; display: flex; flex-direction: column; gap: 4px; }
-    .ev-acc { background: #131a3a; border: 1px solid #1f2937; border-radius: 5px; }
-    .ev-acc[open] { background: #0f172a; border-color: #312e81; }
-    .ev-acc-head { padding: 6px 10px; cursor: pointer; display: flex; align-items: center; gap: 8px; user-select: none; list-style: none; }
+    /* Accordion stack — one section per event class. Each section has a
+       3px colored stripe on its left edge that maps to the same class color
+       used on the timeline ticks above; opens to reveal a controls strip
+       (sort + min-score) and a scannable list of timestamped events. */
+    .tl-accordions { margin: 0; border-top: 1px solid var(--line-soft); display: flex; flex-direction: column; }
+    .ev-acc { background: transparent; border: 0; border-radius: 0; border-bottom: 1px solid var(--line-soft); position: relative; }
+    .ev-acc:last-child { border-bottom: 0; }
+    .ev-acc::before { content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px; background: var(--c, transparent); opacity: 0.45; transition: opacity .15s; }
+    .ev-acc[open]::before { opacity: 1; }
+    .ev-acc[open] { background: var(--bg-1); }
+    .ev-acc-head { padding: 12px 18px 12px 22px; cursor: pointer; display: grid; grid-template-columns: auto 1fr auto auto; align-items: center; gap: 14px; user-select: none; list-style: none; transition: background .12s; }
     .ev-acc-head::-webkit-details-marker { display: none; }
-    .ev-acc-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-    .ev-acc-name { color: #e0e7ff; font-size: 12px; font-weight: 500; }
-    .ev-acc-count { color: #94a3b8; font-size: 10px; padding: 1px 7px; background: #1e293b; border-radius: 10px; }
-    .ev-acc-chev { color: #94a3b8; font-size: 11px; margin-left: auto; transition: transform .15s; }
-    .ev-acc[open] .ev-acc-chev { transform: rotate(90deg); }
-    .ev-acc-controls { display: flex; align-items: center; gap: 8px; padding: 4px 10px 6px; border-bottom: 1px solid #1f2937; font-size: 11px; color: #94a3b8; flex-wrap: wrap; }
-    .ev-acc-controls .ev-sort { background: transparent; border: 1px solid #1f2937; color: #94a3b8; padding: 2px 8px; border-radius: 3px; font-size: 10px; cursor: pointer; font-family: inherit; }
-    .ev-acc-controls .ev-sort.active { background: #1e293b; color: #e0f2fe; border-color: #334155; }
-    .ev-acc-controls input[type="range"] { width: 100px; flex-shrink: 0; }
-    .ev-acc-controls .ev-min-score { font-variant-numeric: tabular-nums; color: #cbd5e1; min-width: 28px; }
-    .ev-list { list-style: none; padding: 0; margin: 0; max-height: 380px; overflow-y: auto; }
-    .ev-item { display: grid; grid-template-columns: 70px 1fr 32px auto auto auto; align-items: center; gap: 6px; padding: 5px 10px; font-size: 12px; border-top: 1px solid #1f2937; cursor: pointer; }
-    .ev-item-actions { display: inline-flex; gap: 2px; align-items: center; }
-    .ev-item .ev-meta-btn { background: transparent; border: 1px solid #1f2937; color: #6b7280; font-size: 11px; padding: 3px 6px; border-radius: 4px; cursor: pointer; min-width: 0; line-height: 1.3; font-family: inherit; }
+    .ev-acc-head:hover { background: var(--bg-2); }
+    .ev-acc[open] .ev-acc-head { background: var(--bg-2); border-bottom: 1px solid var(--line-soft); }
+    /* Class-color dot is replaced by the left stripe; keep the element so the
+       JS that may reference it still works, but render it invisibly. */
+    .ev-acc-dot { width: 0; height: 0; }
+    .ev-acc-name { font: 500 14px var(--font-display); color: var(--ink-0); letter-spacing: -0.005em; text-transform: lowercase; }
+    .ev-acc-count { font: 500 11px var(--font-mono); color: var(--ink-2); padding: 4px 11px; background: var(--bg-3); border: 1px solid var(--line); border-radius: 999px; font-variant-numeric: tabular-nums; }
+    .ev-acc-chev { color: var(--ink-3); font-size: 12px; width: 16px; text-align: center; transition: transform .15s, color .15s; }
+    .ev-acc[open] .ev-acc-chev { transform: rotate(90deg); color: var(--ink-1); }
+    /* Controls strip: sort group on left (label + segmented buttons),
+       score group on right (label + slider + readout pill). The slider's
+       current value sits INLINE next to the slider, not below. */
+    .ev-acc-controls { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; padding: 12px 18px 12px 22px; border-bottom: 1px solid var(--line-soft); background: var(--bg-1); }
+    .acc-sort-group, .acc-score-group { display: inline-flex; align-items: center; gap: 10px; }
+    .acc-label { font: 500 10px var(--font-display); color: var(--ink-3); letter-spacing: 0.1em; text-transform: uppercase; }
+    .acc-segctrl { display: inline-flex; gap: 0; background: var(--bg-2); border: 1px solid var(--line); border-radius: 6px; padding: 2px; }
+    .ev-acc-controls .ev-sort { background: transparent; border: 0; color: var(--ink-2); padding: 4px 12px; border-radius: 4px; font: 500 10px var(--font-mono); cursor: pointer; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.06em; transition: background .12s, color .12s; }
+    .ev-acc-controls .ev-sort:hover { color: var(--ink-1); }
+    .ev-acc-controls .ev-sort.active { background: var(--accent); color: #08090f; }
+    .ev-acc-controls input[type="range"] { width: 110px; flex-shrink: 0; accent-color: var(--accent); height: 4px; }
+    .ev-acc-controls .ev-min-score { font: 500 12px var(--font-mono); color: var(--accent); min-width: 42px; text-align: center; padding: 3px 9px; background: var(--accent-soft); border-radius: 6px; font-variant-numeric: tabular-nums; }
+    /* Event row list — single horizontal row per event:
+       time | confidence bar | score num | ▶ play | ↗ twitch | 👍/👎/⭐/🔗
+       Hover lifts the row; .now-playing marks the active one. Borders are
+       hairline so the list reads as a single dense table, not card stack. */
+    .ev-list { list-style: none; padding: 0; margin: 0; max-height: 420px; overflow-y: auto; background: var(--bg-1); }
+    .ev-list::-webkit-scrollbar { width: 8px; }
+    .ev-list::-webkit-scrollbar-track { background: var(--bg-1); }
+    .ev-list::-webkit-scrollbar-thumb { background: var(--line); border-radius: 4px; }
+    .ev-item { display: grid; grid-template-columns: 60px 1fr 44px auto auto auto; align-items: center; gap: 12px; padding: 9px 18px 9px 22px; border-top: 1px solid var(--line-soft); cursor: pointer; transition: background .1s; }
+    .ev-item:first-child { border-top: 0; }
+    .ev-item:hover { background: var(--bg-2); }
+    .ev-item.now-playing { background: rgba(56,189,248,.07); box-shadow: inset 3px 0 0 var(--accent); }
+    .ev-item-actions { display: inline-flex; gap: 4px; align-items: center; padding-left: 10px; border-left: 1px solid var(--line-soft); }
+    .ev-item .ev-meta-btn { background: transparent; border: 1px solid transparent; color: var(--ink-3); font-size: 13px; padding: 5px 7px; border-radius: 5px; cursor: pointer; min-width: 30px; line-height: 1; font-family: inherit; display: inline-flex; align-items: center; justify-content: center; transition: color .12s, background .12s, border-color .12s; }
     /* Default hover for action buttons (star / share / play / twitch) is
        neutral cyan-grey. Vote buttons override below with semantic colors
        (green for up, red for down) — bumped specificity via the chained
@@ -442,17 +539,20 @@
        focusable for keyboard nav. */
     .ev-item .vote-locked { opacity: 0.45; }
     .ev-item .vote-locked:hover { opacity: 0.85; }
-    .ev-item:first-child { border-top: 0; }
-    .ev-item:hover { background: #131a3a; }
-    .ev-item.now-playing { background: #0c1f3a; outline: 1px solid #38bdf8; outline-offset: -1px; }
-    .ev-time { color: #fde047; font-variant-numeric: tabular-nums; font-weight: 500; }
-    .ev-score-bar { display: inline-block; width: 100%; height: 4px; background: #1e293b; border-radius: 2px; overflow: hidden; }
-    .ev-score-bar > span { display: block; height: 100%; background: linear-gradient(90deg, #475569, #38bdf8); }
-    .ev-score-num { color: #64748b; font-size: 10px; font-variant-numeric: tabular-nums; text-align: right; }
-    .ev-play { background: #6441a5; border: 1px solid #7d5bbe; color: #f3e8ff; font-size: 10px; padding: 3px 8px; border-radius: 4px; cursor: pointer; font-family: inherit; min-width: 0; }
-    .ev-play:hover { background: #7d5bbe; }
-    .ev-twitch { background: #2d1f4a; border: 1px solid #4c3a7a; color: #c4b5fd; font-size: 10px; padding: 3px 8px; border-radius: 4px; text-decoration: none; line-height: 1.4; }
-    .ev-twitch:hover { background: #4c3a7a; color: #f3e8ff; }
+    /* Time = mono, accent-cyan, tabular: it's the most-scanned column. */
+    .ev-time { font: 500 13px var(--font-mono); color: var(--accent); font-variant-numeric: tabular-nums; letter-spacing: -0.02em; }
+    /* Score bar is a confidence indicator, not a primary action — quiet. */
+    .ev-score-bar { display: inline-block; width: 100%; height: 4px; background: var(--bg-3); border-radius: 2px; overflow: hidden; }
+    .ev-score-bar > span { display: block; height: 100%; background: linear-gradient(90deg, var(--ink-3), var(--accent)); border-radius: 2px; }
+    .ev-score-num { font: 500 11px var(--font-mono); color: var(--ink-3); font-variant-numeric: tabular-nums; text-align: right; letter-spacing: -0.02em; }
+    /* Primary action (▶ play) — twitch-purple filled button. Secondary
+       (↗ open) — outline-only; same width as primary so they pair visually. */
+    .ev-play { background: linear-gradient(135deg, #7d5bbe 0%, #6441a5 100%); border: 0; color: #f3e8ff; font-size: 12px; padding: 6px 10px; border-radius: 6px; cursor: pointer; font-family: inherit; min-width: 32px; min-height: 30px; display: inline-flex; align-items: center; justify-content: center; transition: transform .1s, box-shadow .1s; box-shadow: 0 2px 8px -4px rgba(125, 91, 190, .6); }
+    .ev-play:hover { transform: translateY(-1px); box-shadow: 0 4px 12px -4px rgba(125, 91, 190, .8); }
+    .ev-twitch { background: transparent; border: 1px solid var(--line); color: var(--ink-2); font-size: 12px; padding: 6px 10px; border-radius: 6px; text-decoration: none; line-height: 1; min-width: 32px; min-height: 30px; display: inline-flex; align-items: center; justify-content: center; transition: color .12s, border-color .12s; }
+    .ev-twitch:hover { color: var(--accent); border-color: var(--accent); }
+    .ev-play [data-lucide], .ev-play svg.lucide,
+    .ev-twitch [data-lucide], .ev-twitch svg.lucide { width: 14px; height: 14px; }
     @media (max-width: 720px) {
       .ev-item { grid-template-columns: 60px 1fr auto auto; gap: 4px; padding: 4px 8px; font-size: 11px; }
       .ev-score-num { display: none; }
@@ -829,9 +929,22 @@ async function renderVodDetailCard(creator, basename, t) {
   }
   // Async: fetch this VOD's events from /api/events and inline a timeline card.
   loadEventsForVod(v).then(({ events, duration }) => {
-    if (!events.length) return;
     const eventBox = document.getElementById("vdEvents");
     if (!eventBox) return;
+    if (!events.length) {
+      // No xcorr / event sidecars exist for this VOD yet. Show an
+      // explicit empty-state instead of leaving the page looking
+      // half-rendered. Also serves as the future hook for a paid
+      // "scan this VOD" CTA — the button is wired to a dialog
+      // placeholder for now.
+      eventBox.innerHTML = renderVodNoEventsPanel(v);
+      refreshIcons();
+      const cta = eventBox.querySelector(".ne-cta");
+      if (cta) cta.addEventListener("click", () => {
+        toast("event extraction kicks in via paid scan — coming soon");
+      });
+      return;
+    }
     eventBox.innerHTML = renderVodTimelineCard({
       c: v.c, b: v.b, tv: v.tv, title: v.title,
       duration: duration,
@@ -840,6 +953,41 @@ async function renderVodDetailCard(creator, basename, t) {
     attachTimelineHandlers();
     refreshIcons();
   });
+}
+
+function renderVodNoEventsPanel(v) {
+  // Surfaced under the VOD detail card when no xc_*.json sidecars exist.
+  // Communicates: scan hasn't run, here's what it would unlock, here's
+  // the (future) CTA. Single-card layout matches the rest of the
+  // editorial-style cards in events mode.
+  return `
+    <div class="ne-card">
+      <div class="ne-stripe"></div>
+      <div class="ne-body">
+        <div class="ne-eyebrow">in-game audio events</div>
+        <div class="ne-title">no events scanned yet</div>
+        <p class="ne-lede">
+          Once we run the audio-event scanner on this VOD you'll see a
+          color-coded timeline of every match start, gen pop, survivor hook
+          and match end — click any tick to jump straight to that moment
+          on Twitch.
+        </p>
+        <div class="ne-classes">
+          <span class="ne-cls" style="--c:#10b981">match start</span>
+          <span class="ne-cls" style="--c:#ef4444">match end</span>
+          <span class="ne-cls" style="--c:#fbbf24">gen popped</span>
+          <span class="ne-cls" style="--c:#a78bfa">survivor on hook</span>
+          <span class="ne-cls" style="--c:#fb923c">match queued</span>
+        </div>
+        <div class="ne-actions">
+          <button class="ne-cta" type="button">
+            <i data-lucide="zap">⚡</i> kick off a scan
+            <span class="ne-cta-pill">soon</span>
+          </button>
+          <span class="ne-cta-note">Detection runs locally in ~5 min per 5 h VOD; results publish back here.</span>
+        </div>
+      </div>
+    </div>`;
 }
 
 async function loadEventsForVod(v) {
@@ -986,6 +1134,8 @@ const ROADMAP = {
     ["default browse view", "every mode/creator combo shows VODs with date, duration, and per-class event chips instead of an empty landing"],
     ["auth-gated event votes", "👍/👎 buttons require Twitch login; each label row is attributed to the submitter so good labelers stand out"],
     ["player is always docked", "no more bottom-right floating panel — the twitch player anchors inside the active row's container in every mode"],
+    ["editorial type system", "Sora display + JetBrains Mono data — VOD cards / accordions / event rows redesigned as a scannable track listing instead of a generic dashboard"],
+    ["no-events panel", "VODs without an event scan get a clean explainer card with future paywall hook (kick off scan) instead of looking half-rendered"],
   ],
   next: [
     ["VOD thumbnails", "swap basenames for real Twitch preview images so VODs are scannable"],
@@ -1543,12 +1693,18 @@ function renderVodTimelineCard(v) {
             <span class="ev-acc-chev">▸</span>
           </summary>
           <div class="ev-acc-controls">
-            <span>sort:</span>
-            <button class="ev-sort active" data-sort="time">by time</button>
-            <button class="ev-sort" data-sort="score">by score</button>
-            <span style="margin-left:auto" title="hits below this confidence are hidden — drag down to see the long tail">min score:</span>
-            <input type="range" min="0" max="1" step="0.05" value="${defaultMinScore(cls).toFixed(2)}" class="ev-min-range">
-            <span class="ev-min-score">${defaultMinScore(cls).toFixed(2)}</span>
+            <div class="acc-sort-group">
+              <span class="acc-label">sort</span>
+              <div class="acc-segctrl">
+                <button class="ev-sort active" data-sort="time">time</button>
+                <button class="ev-sort" data-sort="score">score</button>
+              </div>
+            </div>
+            <div class="acc-score-group">
+              <span class="acc-label" title="hits below this confidence are hidden — drag down to see the long tail">min score</span>
+              <input type="range" min="0" max="1" step="0.05" value="${defaultMinScore(cls).toFixed(2)}" class="ev-min-range">
+              <span class="ev-min-score">${defaultMinScore(cls).toFixed(2)}</span>
+            </div>
           </div>
           <ul class="ev-list">${itemsHtml}</ul>
         </details>`;
