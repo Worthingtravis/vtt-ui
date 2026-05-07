@@ -74,7 +74,8 @@
     #q { flex: 1; min-width: 280px; background: #1f2937; border: 1px solid #374151; color: #e5e7eb; padding: 8px 12px; border-radius: 6px; font-size: 14px; }
     #q:focus { outline: 2px solid #38bdf8; outline-offset: -2px; }
     select { background: #1f2937; border: 1px solid #374151; color: #e5e7eb; padding: 8px 12px; border-radius: 6px; font-size: 13px; }
-    .modes { display: flex; gap: 4px; background: #1f2937; border: 1px solid #374151; border-radius: 6px; padding: 2px; }
+    .modes { display: flex; gap: 6px; align-items: center; }
+    .modes-group { display: flex; gap: 4px; background: #1f2937; border: 1px solid #374151; border-radius: 6px; padding: 2px; }
     .modes button { background: transparent; border: 0; color: #9ca3af; padding: 5px 10px; border-radius: 4px; cursor: pointer; font-size: 12px; }
     .modes button.active { background: #0c4a6e; color: #e0f2fe; }
     .count { color: #9ca3af; font-size: 12px; margin-left: auto; }
@@ -903,11 +904,17 @@
       <button id="qPasteSubmit">+ submit this VOD</button>
     </div>
     <div class="modes" id="modes">
-      <button data-mode="all" class="active" title="search clip titles + full VOD transcripts together">all</button>
-      <button data-mode="clip" title="published highlight clips only">clips</button>
-      <button data-mode="vod" title="full VOD transcript segments (every word said)">vods</button>
-      <button data-mode="event" title="in-game audio events (DBD: match start, gen popped, survivor on hook, etc.) — no text query needed"><i data-lucide="target">🎯</i> events</button>
-      <button data-mode="saved" title="hits you've starred (currently saved to this browser)"><i data-lucide="star">⭐</i> saved</button>
+      <div class="modes-group">
+        <button data-mode="all" class="active" title="search clip titles + full VOD transcripts together">all</button>
+        <button data-mode="clip" title="published highlight clips only">clips</button>
+        <button data-mode="vod" title="full VOD transcript segments (every word said)">vods</button>
+      </div>
+      <div class="modes-group">
+        <button data-mode="event" title="in-game audio events (DBD: match start, gen popped, survivor on hook, etc.) — no text query needed"><i data-lucide="target">🎯</i> events</button>
+      </div>
+      <div class="modes-group">
+        <button data-mode="saved" title="hits you've starred (currently saved to this browser)"><i data-lucide="star">⭐</i> saved</button>
+      </div>
     </div>
     <select id="creator"><option value="">all creators</option></select>
     <span class="count" id="count"></span>
