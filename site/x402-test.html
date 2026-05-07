@@ -201,12 +201,18 @@ async function pay() {
   const validBefore = Math.floor(Date.now() / 1000) + Number(requirement.maxTimeoutSeconds || 300);
   const nonce = toHex(crypto.getRandomValues(new Uint8Array(32)));
   const value = requirement.maxAmountRequired.toString();
+  // Read EIP-712 domain name/version from the server-supplied requirement.extra
+  // (the facilitator rejects the signature otherwise — the domain has to match
+  // exactly what the resource server advertises). USDC defaults are name="USDC"
+  // v="2" but we don't hardcode them here so a future asset rotation just works.
+  const extra = requirement.extra || {};
   const domain = {
-    name: "USDC",
-    version: "2",
+    name: extra.name || "USDC",
+    version: extra.version || "2",
     chainId: chain.id,
     verifyingContract: requirement.asset,
   };
+  log(`EIP-712 domain: name=${domain.name} version=${domain.version}`);
   const types = {
     TransferWithAuthorization: [
       { name: "from",        type: "address" },

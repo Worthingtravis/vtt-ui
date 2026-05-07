@@ -121,22 +121,11 @@ async function recordShadowWouldBlock(kv: KVNamespace | undefined, identity: str
 // ── 402 response builder ───────────────────────────────────────────────────
 
 function build402Response(request: Request, env: GateEnv, config: GateConfig): Response {
-  const network = networkFor(env);
-  const asset = USDC_CONTRACT[network];
-  const payTo = env.X402_RECEIVER_ADDRESS || "";
-  // 6-decimal USDC: $0.10 → "100000"
-  const maxAmountRequired = String(Math.round(config.priceUsd * 1_000_000));
-  const requirement: PaymentRequirement = {
-    scheme: "exact",
-    network,
-    maxAmountRequired,
-    resource: request.url,
-    description: config.description,
-    mimeType: "application/json",
-    payTo,
-    maxTimeoutSeconds: 30,
-    asset,
-  };
+  const requirement = buildRequirement(request.url, env, config);
+  const maxAmountRequired = requirement.maxAmountRequired as string;
+  const network = requirement.network;
+  const asset = requirement.asset as string;
+  const payTo = requirement.payTo as string;
   const headerB64 = btoa(JSON.stringify(requirement));
   return jsonResponse({
     ok: false,
@@ -159,6 +148,30 @@ function build402Response(request: Request, env: GateEnv, config: GateConfig): R
 // `settle` broadcasts on-chain. We do verify-then-settle synchronously to
 // keep things correct. Phase 5 may move settle async if the latency hurts.
 
+// USDC EIP-712 domain hint that the facilitator uses to reconstruct the
+// signed authorization. Without this, x402.org/facilitator returns
+// `invalid_exact_evm_missing_eip712_domain` even on a correct signature.
+// Both Base mainnet + Sepolia Circle-issued USDC use name="USDC" v="2".
+const USDC_EIP712_DOMAIN = { name: "USDC", version: "2" };
+
+function buildRequirement(resourceUrl: string, env: GateEnv, config: GateConfig): PaymentRequirement {
+  const network = networkFor(env);
+  const asset = USDC_CONTRACT[network];
+  const payTo = env.X402_RECEIVER_ADDRESS || "";
+  return {
+    scheme: "exact",
+    network,
+    maxAmountRequired: String(Math.round(config.priceUsd * 1_000_000)),
+    resource: resourceUrl,
+    description: config.description,
+    mimeType: "application/json",
+    payTo,
+    maxTimeoutSeconds: 30,
+    asset,
+    extra: USDC_EIP712_DOMAIN,
+  };
+}
+
 async function verifyPayment(
   paymentHeader: string,
   request: Request,
@@ -166,20 +179,7 @@ async function verifyPayment(
   config: GateConfig,
 ): Promise<PaymentVerifyResult> {
   const facilitator = env.X402_FACILITATOR_URL || DEFAULT_FACILITATOR;
-  const network = networkFor(env);
-  const asset = USDC_CONTRACT[network];
-  const payTo = env.X402_RECEIVER_ADDRESS || "";
-  const requirement: PaymentRequirement = {
-    scheme: "exact",
-    network,
-    maxAmountRequired: String(Math.round(config.priceUsd * 1_000_000)),
-    resource: request.url,
-    description: config.description,
-    mimeType: "application/json",
-    payTo,
-    maxTimeoutSeconds: 30,
-    asset,
-  };
+  const requirement = buildRequirement(request.url, env, config);
   // x402 v2 facilitator wants the DECODED PaymentPayload object plus an
   // x402Version field at the top level — not the raw base64 header string.
   // Older drafts of the spec used `paymentHeader: <b64>`; current Coinbase
