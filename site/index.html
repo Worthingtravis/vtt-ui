@@ -175,9 +175,42 @@
       .ev-item .ev-time { flex: 0 0 56px; font-variant-numeric: tabular-nums; }
       .ev-item .ev-score-bar { flex: 1 1 60px; min-width: 50px; height: 6px; }
       .ev-item .ev-score-num { flex: 0 0 28px; text-align: right; font-variant-numeric: tabular-nums; }
-      .ev-item .ev-play, .ev-item .ev-twitch { flex: 0 0 auto; padding: 3px 6px; }
-      .ev-item-actions { flex: 0 0 100%; justify-content: flex-end; gap: 4px; }
-      .ev-item-actions .ev-meta-btn { padding: 3px 6px; font-size: 10px; }
+      .ev-item .ev-play, .ev-item .ev-twitch {
+        flex: 0 0 auto;
+        padding: 6px 10px;
+        min-width: 32px;
+        min-height: 32px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+      /* Vote / star / share row — full-width second line, right-aligned,
+         tap-target-sized so 👍/👎/⭐/🔗 actually fit a fingertip and
+         emoji + lucide SVG render at the same visual size. */
+      .ev-item-actions {
+        flex: 0 0 100%;
+        justify-content: flex-end;
+        gap: 8px;
+        margin-top: 2px;
+      }
+      .ev-item-actions .ev-meta-btn {
+        padding: 6px 10px;
+        font-size: 14px;
+        min-width: 38px;
+        min-height: 34px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        line-height: 1;
+      }
+      /* Pin lucide SVGs to match the emoji button size so the link icon
+         doesn't shrink relative to its 👍 neighbor. */
+      .ev-item-actions .ev-meta-btn [data-lucide],
+      .ev-item-actions .ev-meta-btn svg.lucide,
+      .ev-item .ev-play [data-lucide],
+      .ev-item .ev-play svg.lucide,
+      .ev-item .ev-twitch [data-lucide],
+      .ev-item .ev-twitch svg.lucide { width: 14px; height: 14px; }
       /* Submit modal */
       #submit .panel { padding: 16px; max-width: 100%; width: 100%; border-radius: 0; min-height: 100vh; box-sizing: border-box; }
       #submit .row1 { flex-direction: column; gap: 6px; }
