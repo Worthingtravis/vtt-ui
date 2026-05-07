@@ -394,6 +394,21 @@
     .ne-cta [data-lucide], .ne-cta svg.lucide { width: 14px; height: 14px; }
     .ne-cta-pill { background: rgba(0,0,0,.28); color: rgba(255,255,255,.85); font: 500 9px var(--font-mono); letter-spacing: 0.08em; text-transform: uppercase; padding: 2px 7px; border-radius: 999px; margin-left: 4px; }
     .ne-cta-note { font: 400 11px var(--font-mono); color: var(--ink-3); flex: 1; min-width: 200px; line-height: 1.4; }
+    .ne-cta:disabled { opacity: 0.7; cursor: progress; transform: none; }
+    .ne-cta:disabled:hover { box-shadow: 0 4px 16px -8px rgba(56,189,248,.6); transform: none; }
+    /* Inline progress strip during a running scan. The fill animates as
+       an indeterminate marquee while we don't have real percentages from
+       the worker (xcorr_scan emits stage strings, not progress floats);
+       pollStatus drops `.indeterminate` and sets width:100% on done. */
+    .ne-progress { margin-top: 12px; display: flex; flex-direction: column; gap: 6px; }
+    .ne-progress-bar { width: 100%; height: 5px; background: var(--bg-3); border-radius: 999px; overflow: hidden; position: relative; }
+    .ne-progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), #6441a5); border-radius: 999px; transition: width .4s ease; }
+    .ne-progress-fill.indeterminate { width: 30% !important; animation: ne-marquee 1.4s ease-in-out infinite; }
+    @keyframes ne-marquee {
+      0%   { margin-left: -30%; }
+      100% { margin-left: 100%; }
+    }
+    .ne-progress-msg { font: 400 11px var(--font-mono); color: var(--ink-3); min-height: 14px; }
     @media (max-width: 720px) {
       .ne-body { padding: 18px 20px 20px; gap: 10px; }
       .ne-title { font-size: 17px; }
@@ -1134,17 +1149,15 @@ async function renderVodDetailCard(creator, basename, t) {
     const eventBox = document.getElementById("vdEvents");
     if (!eventBox) return;
     if (!events.length) {
-      // No xcorr / event sidecars exist for this VOD yet. Show an
-      // explicit empty-state instead of leaving the page looking
-      // half-rendered. Also serves as the future hook for a paid
-      // "scan this VOD" CTA — the button is wired to a dialog
-      // placeholder for now.
+      // No xcorr / event sidecars exist for this VOD yet. Show the
+      // empty-state card with the "kick off a scan" CTA wired to
+      // /api/scan/queue. Auth-gated; on success the card swaps into
+      // a polling-progress view and re-renders this whole VOD detail
+      // when the job completes (events are mirrored to R2 inside the
+      // xcorr_jobs worker, so the post-scan re-fetch picks them up).
       eventBox.innerHTML = renderVodNoEventsPanel(v);
       refreshIcons();
-      const cta = eventBox.querySelector(".ne-cta");
-      if (cta) cta.addEventListener("click", () => {
-        toast("event extraction kicks in via paid scan — coming soon");
-      });
+      attachScanKickHandlers(v);
       return;
     }
     eventBox.innerHTML = renderVodTimelineCard({
@@ -1159,11 +1172,12 @@ async function renderVodDetailCard(creator, basename, t) {
 
 function renderVodNoEventsPanel(v) {
   // Surfaced under the VOD detail card when no xc_*.json sidecars exist.
-  // Communicates: scan hasn't run, here's what it would unlock, here's
-  // the (future) CTA. Single-card layout matches the rest of the
-  // editorial-style cards in events mode.
+  // The button is now wired — auth-gated POST /api/scan/queue kicks the
+  // xcorr scan on the local backend. The card swaps into a "scan
+  // running" view that polls /api/scan/status until done, then refreshes.
+  const authed = !!(state.session && state.session.authenticated);
   return `
-    <div class="ne-card">
+    <div class="ne-card" data-creator="${escape(v.c)}" data-basename="${escape(v.b)}">
       <div class="ne-stripe"></div>
       <div class="ne-body">
         <div class="ne-eyebrow">in-game audio events</div>
@@ -1182,14 +1196,117 @@ function renderVodNoEventsPanel(v) {
           <span class="ne-cls" style="--c:#fb923c">match queued</span>
         </div>
         <div class="ne-actions">
-          <button class="ne-cta" type="button">
+          <button class="ne-cta ne-scan-btn" type="button" ${authed ? "" : "data-needs-auth=\"1\""}>
             <i data-lucide="zap">⚡</i> kick off a scan
-            <span class="ne-cta-pill">soon</span>
           </button>
-          <span class="ne-cta-note">Detection runs locally in ~5 min per 5 h VOD; results publish back here.</span>
+          <span class="ne-cta-note">${authed
+            ? "Runs locally in ~5 min per 5 h VOD · publishes back here when done."
+            : "Log in to queue a scan — feedback + scan kicks are gated to logged-in users."}</span>
+        </div>
+        <div class="ne-progress" hidden>
+          <div class="ne-progress-bar"><div class="ne-progress-fill"></div></div>
+          <div class="ne-progress-msg"></div>
         </div>
       </div>
     </div>`;
+}
+
+// Wire the scan-kick button on the VOD detail card. Click → POST
+// /api/scan/queue, then poll /api/scan/status?job_id=<id> on a 4s
+// cadence until the job lands in done/error/cancelled. Renders inline
+// progress so the user knows it's running. On done, re-fetches the
+// VOD's events index entry and re-renders the timeline strip in place.
+function attachScanKickHandlers(v) {
+  const card = document.querySelector(".ne-card");
+  if (!card) return;
+  const btn = card.querySelector(".ne-scan-btn");
+  const note = card.querySelector(".ne-cta-note");
+  const progress = card.querySelector(".ne-progress");
+  const progFill = card.querySelector(".ne-progress-fill");
+  const progMsg = card.querySelector(".ne-progress-msg");
+  if (!btn) return;
+  let pollTimer = null;
+
+  function setRunning(stage, msg) {
+    btn.disabled = true;
+    btn.innerHTML = `<i data-lucide="loader">⏳</i> scan in progress`;
+    refreshIcons();
+    progress.hidden = false;
+    if (note) note.textContent = stage || "starting";
+    if (progMsg) progMsg.textContent = msg || "";
+    progFill.classList.add("indeterminate");
+  }
+  function setError(msg) {
+    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+    btn.disabled = false;
+    btn.innerHTML = `<i data-lucide="rotate-ccw">↻</i> retry scan`;
+    refreshIcons();
+    if (note) { note.textContent = msg || "scan failed"; note.style.color = "var(--bad)"; }
+    progress.hidden = true;
+  }
+  async function pollStatus(jobId) {
+    try {
+      const r = await fetch(`/api/scan/status?job_id=${encodeURIComponent(jobId)}`);
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      const d = await r.json();
+      const stage = d.progress?.stage || d.state || "queued";
+      const msg = d.progress?.msg || "";
+      setRunning(stage, msg);
+      if (d.state === "done") {
+        if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
+        btn.innerHTML = `<i data-lucide="check">✓</i> scan complete — refreshing`;
+        refreshIcons();
+        progFill.classList.remove("indeterminate");
+        progFill.style.width = "100%";
+        // Re-fetch this VOD's events and re-render the detail card so the
+        // user sees their freshly-scanned timeline without a hard reload.
+        setTimeout(() => renderVodDetailCard(v.c, v.b, null), 800);
+        return;
+      }
+      if (d.state === "error" || d.state === "cancelled") {
+        setError(d.error || `scan ${d.state}`);
+        return;
+      }
+      pollTimer = setTimeout(() => pollStatus(jobId), 4000);
+    } catch (e) {
+      // Transient — back off and retry once before surfacing.
+      pollTimer = setTimeout(() => pollStatus(jobId), 8000);
+    }
+  }
+
+  btn.addEventListener("click", async (ev) => {
+    ev.preventDefault();
+    if (btn.dataset.needsAuth === "1") {
+      toast("log in to queue a scan");
+      return;
+    }
+    btn.disabled = true;
+    btn.innerHTML = `<i data-lucide="loader">⏳</i> queueing…`;
+    refreshIcons();
+    try {
+      const r = await fetch("/api/scan/queue", {
+        method: "POST",
+        credentials: "same-origin",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ creator: v.c, basename: v.b }),
+      });
+      if (r.status === 401) { setError("log in to queue scans"); toast("log in to queue scans"); return; }
+      const d = await r.json().catch(() => ({}));
+      if (!r.ok || !d.ok || !d.job_id) {
+        setError(d.error || `HTTP ${r.status}`);
+        return;
+      }
+      if (d.deduped) {
+        toast("already running — tracking existing job");
+      } else {
+        toast("scan queued ⚡");
+      }
+      setRunning("queued", "");
+      pollStatus(d.job_id);
+    } catch (e) {
+      setError(String(e.message || e));
+    }
+  });
 }
 
 async function loadEventsForVod(v) {

@@ -52,6 +52,26 @@ else
   bad "/api/event_label/append should 401 anon, got HTTP $auth_code"
 fi
 
+# /api/scan/queue is the same shape — POST + auth-gated.
+scan_code=$(curl -s --compressed -X POST "$BASE/api/scan/queue" \
+  -H "content-type: application/json" \
+  -d '{"creator":"_smoke","basename":"_smoke"}' \
+  -o /dev/null -w "%{http_code}")
+if [ "$scan_code" = "401" ]; then
+  ok "/api/scan/queue rejects anon (401)"
+else
+  bad "/api/scan/queue should 401 anon, got HTTP $scan_code"
+fi
+
+# /api/scan/status is public passthrough; missing job_id should 400.
+status_code=$(curl -s --compressed "$BASE/api/scan/status" \
+  -o /dev/null -w "%{http_code}")
+if [ "$status_code" = "400" ]; then
+  ok "/api/scan/status rejects missing job_id (400)"
+else
+  bad "/api/scan/status should 400 without job_id, got HTTP $status_code"
+fi
+
 if [ $fail -gt 0 ]; then
   printf "\n\033[31mFAILED %d check(s)\033[0m\n" "$fail"
   exit 1
