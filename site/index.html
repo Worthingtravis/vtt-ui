@@ -3071,18 +3071,22 @@ function applyAnchor() {
   if (w < sr.width) left += (sr.width - w) / 2; // center if narrower than container
   if (left + w > window.innerWidth - 8) left = Math.max(8, window.innerWidth - 8 - w);
   if (left < 8) left = 8;
-  // Sticky-but-bounded: stick at top:8 while there's room, but cap the player's
-  // bottom to the active container's bottom so it slides off with its own VOD
-  // instead of pinning at the top of the viewport while rows from a *different*
-  // VOD scroll past behind it.
+  // Symmetric sticky: stick to top:8 when scrolled past the spacer, stick to
+  // bottom-of-viewport when scrolled above the spacer, ride naturally in
+  // between. Bottom-cap to container.bottom so the player slides off the top
+  // with its own VOD instead of pinning while rows from a *different* VOD
+  // scroll past behind it.
   const naturalTop = sr.top + 8;
-  const stickyTop = Math.max(8, naturalTop);
-  let top = stickyTop;
+  const minTop = 8;
+  const maxTop = Math.max(minTop, window.innerHeight - totalH - 8);
+  let top = Math.min(maxTop, Math.max(minTop, naturalTop));
   if (_anchorContainer) {
     const cr = _anchorContainer.getBoundingClientRect();
     const bottomCap = cr.bottom - totalH - 8;
-    top = Math.min(stickyTop, bottomCap);
-    const offscreen = cr.bottom < 0 || cr.top > window.innerHeight;
+    top = Math.min(top, bottomCap);
+    // Hide only when fully scrolled past the top — when the container is
+    // below the viewport, leave the player visible (pinned to the bottom).
+    const offscreen = cr.bottom < 0;
     _twitchPanel.style.visibility = offscreen ? "hidden" : "";
   }
   _twitchPanel.style.left = `${Math.round(left)}px`;
