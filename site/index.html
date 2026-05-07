@@ -145,6 +145,20 @@
       .tl-footer { gap: 8px; font-size: 10px; }
       /* Mobile: anchor still applies via JS, just tighten the chrome. */
       #twitchFloatingPanel .tfp-bar { padding: 8px 10px; }
+      /* VOD-group / browse-card header — let the title wrap to a 2nd line so
+         a long Twitch VOD name doesn't push the action pills off-screen.
+         Title gets full-width row 2; pills sit on row 1. */
+      .vod-group-header { flex-wrap: wrap; row-gap: 4px; padding: 8px 10px; min-height: 0; }
+      .vod-group-header .title { flex: 1 1 100%; order: 99; font-size: 12px; white-space: normal; word-break: break-word; line-height: 1.25; }
+      .vod-group-header .creator { font-size: 10px; }
+      .vod-group-header .vg-count, .vod-group-header .vg-date,
+      .vod-group-header .vg-dur, .vod-group-header .vg-twitch { font-size: 10px; }
+      /* Timeline-card title: same wrap treatment so long stream names don't
+         push the on-twitch / event-count pills off the right edge. */
+      .tl-title { white-space: normal; word-break: break-word; line-height: 1.25; }
+      /* Browse-card event chips can also crowd narrow screens. */
+      .browse-evchips { padding: 6px 10px; }
+      .browse-evchip { font-size: 10px; padding: 2px 6px; }
       /* Submit modal */
       #submit .panel { padding: 16px; max-width: 100%; width: 100%; border-radius: 0; min-height: 100vh; box-sizing: border-box; }
       #submit .row1 { flex-direction: column; gap: 6px; }
@@ -882,7 +896,16 @@ function shareUrl(h) {
 }
 
 function fmtDuration(s) { s = Number(s) || 0; const m = Math.floor(s / 60); const r = Math.round(s % 60); return `${m}:${String(r).padStart(2,"0")}`; }
-function fmtT(s) { s = Number(s) || 0; const h = Math.floor(s/3600); const m = Math.floor((s%3600)/60); const r = Math.round(s%60); return h ? `${h}:${String(m).padStart(2,"0")}:${String(r).padStart(2,"0")}` : `${m}:${String(r).padStart(2,"0")}`; }
+function fmtT(s) {
+  // Round the whole second-count first so we never end up with seconds=60
+  // (Math.round(s%60) on 59.5 → 60 → "1:51:60"). Rounding before the split
+  // lets the carry roll into the minute / hour cleanly.
+  s = Math.max(0, Math.round(Number(s) || 0));
+  const h = Math.floor(s/3600);
+  const m = Math.floor((s%3600)/60);
+  const r = s % 60;
+  return h ? `${h}:${String(m).padStart(2,"0")}:${String(r).padStart(2,"0")}` : `${m}:${String(r).padStart(2,"0")}`;
+}
 function fmtDate(s) { if (!s) return ""; const m = String(s).match(/(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[1]}-${m[2]}-${m[3]}` : ""; }
 function escape(s) { return String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
@@ -1657,18 +1680,11 @@ function attachTimelineHandlers() {
         return Number(a.dataset.tsec) - Number(b.dataset.tsec);
       });
       visible.forEach((it) => list.appendChild(it));
-      // Filter the timeline ticks for THIS class on this card too
-      if (card) {
-        card.querySelectorAll(`.tl-tick[data-class="${cls}"]`).forEach((tick) => {
-          // tl-tick has no data-score yet — read it back from the matching ev-item
-          const tsec = tick.dataset.tsec;
-          const matchItem = list.querySelector(`.ev-item[data-tsec="${tsec}"]`);
-          if (matchItem) {
-            const s = Number(matchItem.dataset.score || 0);
-            tick.style.display = s >= minScore ? "" : "none";
-          }
-        });
-      }
+      // Timeline ticks intentionally NOT filtered by the per-class slider —
+      // the strip is a full histogram of detections so users see real event
+      // density at a glance. The slider only narrows the accordion's row
+      // list (which is the triage tool). Earlier we filtered both, which
+      // made the timeline appear empty by default at the 0.30 threshold.
     }
     buttons.forEach((b) => {
       b.addEventListener("click", (ev) => {
@@ -1812,7 +1828,12 @@ function renderEventListGrouped(hits) {
 function attachRowHandlers() {
   refreshIcons();
   $$(".clip-row[data-id]").forEach((el) => {
-    el.querySelector(".head").addEventListener("click", (ev) => {
+    // Some clip-row variants (e.g. browse cards) reuse the .clip-row class
+    // without rendering a .head, so guard against null. Without this the
+    // first event-mode load throws and stops the rest of the wiring.
+    const head = el.querySelector(".head");
+    if (!head) return;
+    head.addEventListener("click", (ev) => {
       if (ev.target.closest("a, button")) return;
       togglePlayer(el);
     });
@@ -1855,13 +1876,85 @@ function attachRowHandlers() {
       navigator.clipboard.writeText(url).then(() => toast("link copied"));
     });
   });
-  // VOD-group expand/collapse
+  // VOD-mode segment grouping uses .group-head; the events-mode grouping
+  // (renderEventListGrouped) reuses the .vod-group class but ships
+  // .vod-group-header instead. Filter to the segment-grouping shape via
+  // the .group-head presence — the optional chain prevents the null-
+  // addEventListener crash that broke every events-mode load.
   $$(".vod-group").forEach((g) => {
-    g.querySelector(".group-head").addEventListener("click", (ev) => {
+    const head = g.querySelector(".group-head");
+    if (!head) return;
+    head.addEventListener("click", (ev) => {
       if (ev.target.closest("a")) return;
       g.classList.toggle("expanded");
     });
   });
+  // Per-event 👍 / 👎 wiring for list-view rows. Mirrors the accordion
+  // ev-item logic but uses the row's .head attributes since the rec data
+  // isn't on a nested .ev-item here.
+  $$(".row.event .micro [data-act='up'], .row.event .micro [data-act='down']").forEach((btn) => {
+    if (!isAuthed_global()) {
+      btn.classList.add("vote-locked");
+      btn.title = "log in to vote — feedback trains the detectors";
+    }
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const row = btn.closest(".row.event");
+      const key = row?.dataset.key;
+      if (!key) return;
+      const h = findHitByKey(key);
+      if (!h || h.kind !== "event") return;
+      const label = btn.dataset.act === "up" ? 1 : 0;
+      submitVote(h.rec, label, btn, row);
+    });
+  });
+}
+
+// --- Auth + vote helpers shared between the timeline accordion and the
+// list-view rows. submitVote performs the optimistic UI update + same-origin
+// POST to /api/event_label/append (Pages Function gates auth).
+function isAuthed_global() {
+  return !!(state.session && state.session.authenticated);
+}
+function submitVote(rec, label, btn, row) {
+  if (!isAuthed_global()) {
+    toast("log in to vote — feedback is recorded against your handle");
+    return;
+  }
+  const voteKey = `vote:${rec.c}/${rec.b}@${(rec.t || 0).toFixed(2)}#${rec.e}`;
+  const existing = state.eventVotes.get(voteKey);
+  const upBtn = row?.querySelector(`[data-act='up']`);
+  const downBtn = row?.querySelector(`[data-act='down']`);
+  if (existing === label) {
+    state.eventVotes.delete(voteKey);
+    saveEventVotes();
+    upBtn?.classList.remove("voted");
+    downBtn?.classList.remove("voted");
+    toast("vote cleared");
+    return;
+  }
+  state.eventVotes.set(voteKey, label);
+  saveEventVotes();
+  upBtn?.classList.toggle("voted", label === 1);
+  downBtn?.classList.toggle("voted", label === 0);
+  toast(label === 1 ? "thanks — marked correct" : "thanks — marked false-positive");
+  fetch(`/api/event_label/append`, {
+    method: "POST",
+    credentials: "same-origin",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      creator: rec.c, basename: rec.b, event: rec.e,
+      t_sec: rec.t, label, score: rec.s,
+    }),
+  }).then(async (r) => {
+    if (r.status === 401) {
+      state.eventVotes.delete(voteKey);
+      saveEventVotes();
+      upBtn?.classList.remove("voted");
+      downBtn?.classList.remove("voted");
+      toast("session expired — log in again to vote");
+    }
+  }).catch(() => { /* offline ok — local cache still recorded */ });
 }
 
 function findHitByKey(key) {
@@ -2183,8 +2276,24 @@ async function onSegmentCut(btn) {
 
 function microButtons(h) {
   const starred = isStarred(h);
+  // List-view event rows also need 👍 / 👎 — same affordance as the
+  // accordion's ev-item, just at the top-row level since list-view doesn't
+  // nest under a .tl-card. Buttons render anonymous-dimmed and gate on
+  // state.session in the click handler (see attachRowHandlers).
+  const isEvent = h && h.kind === "event";
+  let voteHtml = "";
+  if (isEvent) {
+    const r = h.rec;
+    const voteKey = `vote:${r.c}/${r.b}@${(r.t || 0).toFixed(2)}#${r.e}`;
+    const prev = state.eventVotes ? state.eventVotes.get(voteKey) : null;
+    const evName = escape(eventLabel(r.e).name);
+    voteHtml = `
+      <button data-act="up" class="${prev === 1 ? "voted" : ""}" title="thumbs up — yes, this really is a ${evName}">👍</button>
+      <button data-act="down" class="${prev === 0 ? "voted" : ""}" title="thumbs down — false positive, this isn't a ${evName}">👎</button>`;
+  }
   return `
     <div class="micro">
+      ${voteHtml}
       <button data-act="star" class="${starred ? "starred" : ""}"
               title="${starred ? "unstar (saved locally)" : "save to your local stars"}">${starred ? "★" : "☆"}</button>
       <button data-act="share" title="copy a shareable deep link to this hit">🔗</button>
@@ -2363,8 +2472,19 @@ $("#q").addEventListener("input", () => {
   syncQPasteHint();
   debounce();
 });
-$("#q").addEventListener("focus", () => {
-  if (!$("#q").value.trim()) showRecent();
+// Recent-search dropdown opens only on explicit user gestures — not on the
+// page-load autofocus or on programmatic refocus. Without this guard the
+// dropdown popped up on every initial render and covered the chip strip.
+$("#q").addEventListener("mousedown", () => {
+  if (!$("#q").value.trim() && state.recent.length) showRecent();
+});
+$("#q").addEventListener("keydown", (ev) => {
+  if (ev.key === "ArrowDown" && !$("#q").value.trim() && state.recent.length) {
+    ev.preventDefault();
+    showRecent();
+    const first = $("#recent .ritem");
+    if (first) first.classList.add("kfocus");
+  }
 });
 $("#q").addEventListener("blur", () => {
   // Defer hide so click on a recent item registers first
@@ -2390,6 +2510,12 @@ $("#modes").querySelectorAll("button").forEach((b) => {
 function switchMode(mode) {
   $("#modes").querySelectorAll("button").forEach((x) => x.classList.toggle("active", x.dataset.mode === mode));
   state.mode = mode;
+  // Tear down the docked player on mode change so a stale "now playing"
+  // panel doesn't bleed into the new view (which renders different cards
+  // with different anchor targets, leaving the iframe overlapping content).
+  if (_twitchPanel && _twitchPanel.classList.contains("visible")) {
+    hideTwitchPanel();
+  }
   runSearch();
 }
 
@@ -2740,8 +2866,12 @@ async function bootFromUrl() {
       return;
     }
   }
-  if (q || mode === "clip" || mode === "saved" || mode === "event") runSearch();
-  else renderLanding();
+  // runSearch handles every mode + the empty-query default-browse routing
+  // (mode=vod or creator-set → VOD list; mode=all + no creator → landing).
+  // The earlier explicit allowlist above used to bypass runSearch and fall
+  // straight to renderLanding for mode=all + creator and mode=vod, which is
+  // why the default-browse view never fired on those URLs.
+  runSearch();
 }
 bootFromUrl();
 
