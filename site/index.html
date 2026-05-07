@@ -1458,6 +1458,12 @@ const ROADMAP = {
     ["player is always docked", "no more bottom-right floating panel — the twitch player anchors inside the active row's container in every mode"],
     ["editorial type system", "Sora display + JetBrains Mono data — VOD cards / accordions / event rows redesigned as a scannable track listing instead of a generic dashboard"],
     ["no-events panel", "VODs without an event scan get a clean explainer card with future paywall hook (kick off scan) instead of looking half-rendered"],
+    ["⚡ kick off a scan", "auth-gated button on no-events VODs queues the xcorr scan on the backend; UI polls and auto-refreshes when the timeline lands"],
+    ["✓ confirmed events stick around", "👍 votes get a green stripe + ✓ on the timestamp + a per-VOD “you confirmed N” pill that survives reload"],
+    ["smart events-mode empty state", "when filters wipe out all hits, see active filters as ✕ chips + cross-mode CTAs (“search transcripts for X across CREATOR” / “see all events from CREATOR”)"],
+    ["deep links survive every render", "?vod=...&t=... preserved as the player moves, every play action updates the share URL"],
+    ["xcorr scans stream from R2", "scanner reads audio directly from object storage — no local-cache pull required for one-shot scans"],
+    ["disk auto-eviction", "every download upload also evicts oldest local VODs to keep ≥50 GB free; R2 backstops every read"],
   ],
   next: [
     ["VOD thumbnails", "swap basenames for real Twitch preview images so VODs are scannable"],
@@ -1465,6 +1471,8 @@ const ROADMAP = {
     ["🎙 my VODs", "logged-in creators see + search their own corpus (waiting on auth scope merge)"],
     ["auto-publish from local runs", "any local pipeline run becomes a public demo without manual steps"],
     ["focused detail pages", "/clip/&lt;id&gt; and /v/&lt;creator&gt;/&lt;basename&gt; with proper share previews"],
+    ["download → scan chain", "kick off a scan on a VOD whose audio is missing → auto-queue a vodvod re-download then chain xcorr; covers VODs that were indexed before R2 mirroring or where the local cache was evicted before R2 backfill"],
+    ["fix Cloudflare Pages auto-deploy", "git push currently doesn't trigger a Pages build; deploys are landing via manual wrangler. Reconnect the GitHub integration so future feature commits ship without a manual step"],
   ],
   future: [
     ["API as a service", "paid programmatic search via x402 micropayments on Cloudflare"],
