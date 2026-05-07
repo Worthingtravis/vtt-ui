@@ -325,7 +325,15 @@
     .ev-acc-controls input[type="range"] { width: 100px; flex-shrink: 0; }
     .ev-acc-controls .ev-min-score { font-variant-numeric: tabular-nums; color: #cbd5e1; min-width: 28px; }
     .ev-list { list-style: none; padding: 0; margin: 0; max-height: 380px; overflow-y: auto; }
-    .ev-item { display: grid; grid-template-columns: 70px 1fr 32px auto auto; align-items: center; gap: 8px; padding: 5px 10px; font-size: 12px; border-top: 1px solid #1f2937; cursor: pointer; }
+    .ev-item { display: grid; grid-template-columns: 70px 1fr 32px auto auto auto; align-items: center; gap: 6px; padding: 5px 10px; font-size: 12px; border-top: 1px solid #1f2937; cursor: pointer; }
+    .ev-item-actions { display: inline-flex; gap: 2px; align-items: center; }
+    .ev-item .ev-meta-btn { background: transparent; border: 1px solid #1f2937; color: #6b7280; font-size: 11px; padding: 3px 6px; border-radius: 4px; cursor: pointer; min-width: 0; line-height: 1.3; font-family: inherit; }
+    .ev-item .ev-meta-btn:hover { color: #fde047; border-color: #fde047; background: rgba(202, 138, 4, 0.1); }
+    .ev-item .ev-star.starred { color: #fde047; border-color: #fde047; }
+    .ev-item .ev-up.voted { color: #6ee7b7; border-color: #6ee7b7; background: rgba(16, 185, 129, 0.12); }
+    .ev-item .ev-up:hover { color: #6ee7b7; border-color: #6ee7b7; background: rgba(16, 185, 129, 0.1); }
+    .ev-item .ev-down.voted { color: #fca5a5; border-color: #fca5a5; background: rgba(239, 68, 68, 0.12); }
+    .ev-item .ev-down:hover { color: #fca5a5; border-color: #fca5a5; background: rgba(239, 68, 68, 0.1); }
     .ev-item:first-child { border-top: 0; }
     .ev-item:hover { background: #131a3a; }
     .ev-item.now-playing { background: #0c1f3a; outline: 1px solid #38bdf8; outline-offset: -1px; }
@@ -544,6 +552,23 @@ const EVENT_COLORS = {
   survivor_hooked:    "#a78bfa",
   lobby_alarm:        "#fb923c",
 };
+// Per-class min-score precision floor. The xcorr scanner emits hits down
+// to ~0.10 (tested workbench floor), but precision climbs steeply at
+// higher correlation. These defaults filter out the noisy long tail by
+// default so first impressions are clean — users can drag the slider
+// down per-class to see the recall-leaning view. Source for these
+// numbers: spot-audit of xx_miraculous_xx + jagerzgoober scans against
+// the workbench reference templates.
+const DEFAULT_MIN_SCORES = {
+  match_intro:        0.30,
+  match_result:       0.30,
+  generator_complete: 0.30,
+  survivor_hooked:    0.25,
+  lobby_alarm:        0.25,
+};
+function defaultMinScore(cls) {
+  return DEFAULT_MIN_SCORES[cls] != null ? DEFAULT_MIN_SCORES[cls] : 0.20;
+}
 const SLUG_TO_CLASS = Object.fromEntries(
   Object.entries(EVENT_LABELS).map(([cls, v]) => [v.slug, cls])
 );
@@ -578,7 +603,20 @@ const state = {
     catch { return "timeline"; }
   })(),
   failedCuts: new Set(),  // (creator/basename) keys whose cut failed this session — hide the button on re-render
+  eventVotes: (() => {
+    // Persist event-feedback votes in localStorage so the user's verdicts
+    // survive reload + show pre-voted state on subsequent visits. Map key
+    // is "vote:<creator>/<basename>@<t>#<class>", value is 0 (false-pos)
+    // or 1 (true-pos). Backend stores its own copy via /api/event_label.
+    try {
+      const raw = JSON.parse(localStorage.getItem("vtt_event_votes_v1") || "[]");
+      return new Map(raw);
+    } catch { return new Map(); }
+  })(),
 };
+function saveEventVotes() {
+  try { localStorage.setItem("vtt_event_votes_v1", JSON.stringify(Array.from(state.eventVotes.entries()))); } catch {}
+}
 
 // --- Lucide icons ----------------------------------------------------------
 // We use <i data-lucide="name">emoji-fallback</i> so the page is readable
@@ -856,10 +894,8 @@ function roadmapHTML(meta) {
 
       <div class="cta">
         <span class="label">have a Twitch VOD that isn't in the corpus yet?</span>
-        <button id="landingSubmitBtn">+ submit a VOD</button>
-        <button id="landingDemoBtn" class="demo" hidden>▶ try the submit flow</button>
+        <button id="landingSubmitBtn"><i data-lucide="plus">+</i> submit a VOD</button>
         <a href="https://laughingwhales.com" target="_blank" rel="noopener">about laughingwhales</a>
-        <div id="landingDemoNote" class="demo-note" hidden></div>
       </div>
 
       <details class="road-collapse">
@@ -958,35 +994,6 @@ function renderLanding() {
     });
   }
 
-  // Wire the demo button — picks a real VOD from our corpus async + opens the
-  // submit modal pre-filled with its Twitch URL. The actual API call when the
-  // user clicks "go" is real; the only "demo-ness" is that the picked VOD is
-  // known to short-circuit through `already_processed` so the user sees the
-  // success state instantly.
-  const demoBtn = document.getElementById("landingDemoBtn");
-  const demoNote = document.getElementById("landingDemoNote");
-  if (demoBtn) {
-    loadDemoVods().then((vods) => {
-      const v = pickDemoVod(vods);
-      if (!v) return;  // no demo available; button stays hidden
-      const titleStr = v.title || v.b;
-      const truncated = titleStr.length > 60 ? titleStr.slice(0, 58) + "…" : titleStr;
-      demoBtn.textContent = `▶ try the submit flow`;
-      demoBtn.title = `Pre-fills the submit-a-VOD form with a real Twitch URL: ${v.tv} (${v.c} — ${titleStr}). The VOD's already in our corpus, so you'll get the "already searchable" response instantly — useful for seeing how submission works without waiting for a fresh transcribe.`;
-      demoBtn.dataset.url = `https://www.twitch.tv/videos/${v.tv}`;
-      demoBtn.dataset.creator = v.c;
-      demoBtn.dataset.basename = v.b;
-      demoBtn.hidden = false;
-      demoBtn.addEventListener("click", () => {
-        if (typeof openSubmit === "function") openSubmit(demoBtn.dataset.url);
-        else document.getElementById("submitTrigger")?.click();
-      });
-      if (demoNote) {
-        demoNote.textContent = `the demo will pre-fill: ${v.c} — "${truncated}" (twitch_vod_id ${v.tv}) — already in our corpus, so the response is instant`;
-        demoNote.hidden = false;
-      }
-    });
-  }
 }
 function highlight(text, tokens) {
   if (!tokens.length) return escape(text);
@@ -1279,14 +1286,27 @@ function renderVodTimelineCard(v) {
       const events = byClass.get(cls).slice().sort((a, b) => a.t - b.t);
       const meta = eventLabel(cls);
       const color = EVENT_COLORS[cls] || "#94a3b8";
-      const itemsHtml = events.map((e) => `
-        <li class="ev-item" data-tv="${escape(v.tv)}" data-tsec="${e.t}" data-score="${e.s.toFixed(3)}">
+      const itemsHtml = events.map((e) => {
+        const h = { kind: "event", rec: { c: v.c, b: v.b, e: e.e, t: e.t, s: e.s, tv: v.tv, title: v.title } };
+        const k = hitKey(h);
+        const starred = isStarred(h);
+        const voteKey = `vote:${v.c}/${v.b}@${e.t.toFixed(2)}#${e.e}`;
+        const prevVote = state.eventVotes ? state.eventVotes.get(voteKey) : null;
+        return `
+        <li class="ev-item" data-tv="${escape(v.tv)}" data-tsec="${e.t}" data-score="${e.s.toFixed(3)}" data-class="${escape(e.e)}" data-key="${escape(k)}">
           <span class="ev-time">${fmtT(e.t)}</span>
           <span class="ev-score-bar" title="confidence ${e.s.toFixed(3)}"><span style="width:${Math.min(100, (e.s/0.5)*100).toFixed(0)}%"></span></span>
           <span class="ev-score-num">${e.s.toFixed(2)}</span>
-          <button class="ev-play" data-tv="${escape(v.tv)}" data-tsec="${e.t}" title="play here">▶ play</button>
-          ${v.tv ? `<a class="ev-twitch" target="_blank" rel="noopener" href="https://www.twitch.tv/videos/${encodeURIComponent(v.tv)}?t=${twitchTimeArg(e.t)}" title="open on twitch.tv at ${fmtT(e.t)}">↗ twitch</a>` : ""}
-        </li>`).join("");
+          <button class="ev-play ev-meta-btn" data-tv="${escape(v.tv)}" data-tsec="${e.t}" title="play here"><i data-lucide="play">▶</i></button>
+          ${v.tv ? `<a class="ev-twitch ev-meta-btn" target="_blank" rel="noopener" href="https://www.twitch.tv/videos/${encodeURIComponent(v.tv)}?t=${twitchTimeArg(e.t)}" title="open on twitch.tv at ${fmtT(e.t)}"><i data-lucide="external-link">↗</i></a>` : ""}
+          <span class="ev-item-actions">
+            <button class="ev-up ev-meta-btn ${prevVote === 1 ? "voted" : ""}" data-act="up" title="thumbs up — yes, this really is a ${escape(eventLabel(e.e).name)}">👍</button>
+            <button class="ev-down ev-meta-btn ${prevVote === 0 ? "voted" : ""}" data-act="down" title="thumbs down — false positive, this isn't a ${escape(eventLabel(e.e).name)}">👎</button>
+            <button class="ev-star ev-meta-btn ${starred ? "starred" : ""}" data-act="star" title="${starred ? "unstar (saved locally)" : "save to your local stars"}">${starred ? "★" : "☆"}</button>
+            <button class="ev-share ev-meta-btn" data-act="share" title="copy a deep link to this exact moment"><i data-lucide="link-2">🔗</i></button>
+          </span>
+        </li>`;
+      }).join("");
       return `
         <details class="ev-acc" data-class="${escape(cls)}">
           <summary class="ev-acc-head">
@@ -1299,9 +1319,9 @@ function renderVodTimelineCard(v) {
             <span>sort:</span>
             <button class="ev-sort active" data-sort="time">by time</button>
             <button class="ev-sort" data-sort="score">by score</button>
-            <span style="margin-left:auto">min score:</span>
-            <input type="range" min="0" max="1" step="0.05" value="0" class="ev-min-range">
-            <span class="ev-min-score">0.00</span>
+            <span style="margin-left:auto" title="hits below this confidence are hidden — drag down to see the long tail">min score:</span>
+            <input type="range" min="0" max="1" step="0.05" value="${defaultMinScore(cls).toFixed(2)}" class="ev-min-range">
+            <span class="ev-min-score">${defaultMinScore(cls).toFixed(2)}</span>
           </div>
           <ul class="ev-list">${itemsHtml}</ul>
         </details>`;
@@ -1344,7 +1364,7 @@ function attachTimelineHandlers() {
   // --- Accordion event-row clicks → seek floating player ---
   $$(".ev-item").forEach((row) => {
     row.addEventListener("click", (ev) => {
-      if (ev.target.closest("a")) return; // let twitch external link bubble normally
+      if (ev.target.closest("a, button")) return; // let buttons handle themselves
       const tv = row.dataset.tv;
       const tsec = Number(row.dataset.tsec || 0);
       if (!tv) return;
@@ -1354,28 +1374,133 @@ function attachTimelineHandlers() {
       showTwitchPlayer(card || row, tv, tsec);
     });
   });
-  // Per-section sort toggle (time | score)
+  // --- Per-event star + share buttons (parity with list view) ---
+  function evHitFromRow(row) {
+    const card = row.closest(".tl-card");
+    return { kind: "event", rec: {
+      c: card?.dataset.creator || "",
+      b: card?.dataset.basename || "",
+      e: row.dataset.class,
+      t: Number(row.dataset.tsec || 0),
+      s: Number(row.dataset.score || 0),
+      tv: row.dataset.tv,
+    }};
+  }
+  $$(".ev-item .ev-star").forEach((btn) => {
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const row = btn.closest(".ev-item");
+      const h = evHitFromRow(row);
+      toggleStar(h);
+      const now = isStarred(h);
+      btn.textContent = now ? "★" : "☆";
+      btn.classList.toggle("starred", now);
+      btn.title = now ? "unstar (saved locally)" : "save to your local stars";
+      toast(now ? "saved ★" : "removed");
+    });
+  });
+  $$(".ev-item .ev-share").forEach((btn) => {
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const row = btn.closest(".ev-item");
+      const h = evHitFromRow(row);
+      const url = shareUrl(h);
+      navigator.clipboard.writeText(url).then(() => toast("link copied"));
+    });
+  });
+  // --- Per-event thumbs-up / thumbs-down feedback. Stores locally for
+  // optimistic UI + POSTs to serve.py's /api/event_label/append so the
+  // retrain coordinator picks it up next time. Idempotent on the
+  // backend (label_lib dedupes by basename + t_ms). Tolerant of network
+  // failure — the local cache still drives the visual state.
+  function castVote(row, label /* 1=up, 0=down */) {
+    const rec = evHitFromRow(row).rec;
+    const key = `vote:${rec.c}/${rec.b}@${rec.t.toFixed(2)}#${rec.e}`;
+    const existing = state.eventVotes.get(key);
+    if (existing === label) {
+      // Toggle off — undo the vote locally; the backend keeps its row
+      // (we don't have a "delete label" path on the public endpoint).
+      state.eventVotes.delete(key);
+      saveEventVotes();
+      row.querySelector(".ev-up")?.classList.remove("voted");
+      row.querySelector(".ev-down")?.classList.remove("voted");
+      toast("vote cleared");
+      return;
+    }
+    state.eventVotes.set(key, label);
+    saveEventVotes();
+    row.querySelector(".ev-up")?.classList.toggle("voted", label === 1);
+    row.querySelector(".ev-down")?.classList.toggle("voted", label === 0);
+    toast(label === 1 ? "thanks — marked correct" : "thanks — marked false-positive");
+    if (RENDER_API) {
+      fetch(`${RENDER_API}/api/event_label/append`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          creator: rec.c, basename: rec.b, event: rec.e,
+          t_sec: rec.t, label: label, score: rec.s,
+        }),
+      }).catch(() => { /* offline ok — local state still recorded */ });
+    }
+  }
+  $$(".ev-item .ev-up").forEach((btn) => {
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      castVote(btn.closest(".ev-item"), 1);
+    });
+  });
+  $$(".ev-item .ev-down").forEach((btn) => {
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      castVote(btn.closest(".ev-item"), 0);
+    });
+  });
+  // Per-section sort + min-score filter — applied on first render too so
+  // the per-class precision threshold from DEFAULT_MIN_SCORES kicks in
+  // immediately. Filter also propagates to the timeline ticks above the
+  // accordion so the visible state stays consistent.
   $$(".ev-acc").forEach((acc) => {
+    const cls = acc.dataset.class;
     const list = acc.querySelector(".ev-list");
     const buttons = acc.querySelectorAll(".ev-sort");
     const range = acc.querySelector(".ev-min-range");
     const label = acc.querySelector(".ev-min-score");
+    const card = acc.closest(".tl-card");
     function applyFilters() {
       const sort = acc.querySelector(".ev-sort.active")?.dataset.sort || "time";
       const minScore = Number(range.value) || 0;
       label.textContent = minScore.toFixed(2);
-      // Filter visibility + sort within the list
+      // Filter accordion list by score
       const items = Array.from(list.querySelectorAll(".ev-item"));
+      let kept = 0;
       items.forEach((it) => {
         const s = Number(it.dataset.score || 0);
-        it.style.display = s >= minScore ? "" : "none";
+        const ok = s >= minScore;
+        it.style.display = ok ? "" : "none";
+        if (ok) kept++;
       });
+      // Update the section count badge to reflect filtered count
+      const countBadge = acc.querySelector(".ev-acc-count");
+      if (countBadge) countBadge.textContent = String(kept);
+      // Sort within the list
       const visible = items.filter((it) => it.style.display !== "none");
       visible.sort((a, b) => {
         if (sort === "score") return Number(b.dataset.score) - Number(a.dataset.score);
         return Number(a.dataset.tsec) - Number(b.dataset.tsec);
       });
       visible.forEach((it) => list.appendChild(it));
+      // Filter the timeline ticks for THIS class on this card too
+      if (card) {
+        card.querySelectorAll(`.tl-tick[data-class="${cls}"]`).forEach((tick) => {
+          // tl-tick has no data-score yet — read it back from the matching ev-item
+          const tsec = tick.dataset.tsec;
+          const matchItem = list.querySelector(`.ev-item[data-tsec="${tsec}"]`);
+          if (matchItem) {
+            const s = Number(matchItem.dataset.score || 0);
+            tick.style.display = s >= minScore ? "" : "none";
+          }
+        });
+      }
     }
     buttons.forEach((b) => {
       b.addEventListener("click", (ev) => {
@@ -1386,6 +1511,8 @@ function attachTimelineHandlers() {
       });
     });
     if (range) range.addEventListener("input", applyFilters);
+    // Apply the default precision threshold immediately on first render.
+    applyFilters();
   });
 }
 

@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# Smoke-test live deploys end-to-end: hit the public R2 indexes, the
+# Pages Function endpoints, and the deep-link routes. Exit non-zero on
+# any failure. Cheap (~5s) — meant to run after every deploy.
+set -euo pipefail
+BASE="${BASE:-https://vtt-ui.pages.dev}"
+PUB="${PUB:-https://pub-868d2bf7e2f6434c860d65dfe1cadad4.r2.dev}"
+fail=0
+ok()   { printf "  \033[32m✓\033[0m %s\n" "$*"; }
+bad()  { printf "  \033[31m✗\033[0m %s\n" "$*"; fail=$((fail+1)); }
+hit() {
+  local label="$1" url="$2" need="${3:-}"
+  local code body
+  code=$(curl -s --compressed -o /tmp/_smoke_body -w "%{http_code}" "$url" || echo "000")
+  body=$(cat /tmp/_smoke_body)
+  if [ "$code" = "200" ]; then
+    if [ -z "$need" ] || echo "$body" | grep -q -- "$need"; then
+      ok "$label"
+    else
+      bad "$label — 200 but missing pattern: $need"
+    fi
+  else
+    bad "$label — HTTP $code"
+  fi
+}
+
+echo "== R2 public indexes =="
+hit "creators/index.json"    "$PUB/creators/index.json"    '"creators"'
+hit "vods/index.json"        "$PUB/vods/index.json"        '"vods"'
+hit "events/index.json"      "$PUB/events/index.json"      '"events"'
+
+echo "== Pages Functions =="
+hit "/api/creators"          "$BASE/api/creators"          '"creators"'
+hit "/api/search?q=clutch"   "$BASE/api/search?q=clutch"
+hit "/api/events"            "$BASE/api/events"            '"hits"'
+hit "/api/auth/me"           "$BASE/api/auth/me"           '"authenticated"'
+
+echo "== Static page =="
+hit "/ index.html"           "$BASE/"                      '<title>vtt'
+hit "?mode=event"            "$BASE/?mode=event"           '<title>vtt'
+
+if [ $fail -gt 0 ]; then
+  printf "\n\033[31mFAILED %d check(s)\033[0m\n" "$fail"
+  exit 1
+fi
+printf "\n\033[32mall good\033[0m\n"

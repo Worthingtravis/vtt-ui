@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Deploy the static site + Pages Functions to vtt-ui.pages.dev. Sources
+# .env.local for CLOUDFLARE_API_TOKEN + CLOUDFLARE_ACCOUNT_ID. Pass any
+# extra wrangler flags as args (e.g. `bin/deploy --branch preview`).
+set -euo pipefail
+cd "$(dirname "$0")/../site"
+ENV_FILE=""
+for f in /mnt/ssd/development/video-to-text/.env.local "$HOME/development/vtt-ui/.env.local" ../.env.local; do
+  if [ -f "$f" ]; then ENV_FILE="$f"; break; fi
+done
+if [ -n "$ENV_FILE" ]; then
+  set -a; . "$ENV_FILE"; set +a
+  echo "→ env from $ENV_FILE"
+else
+  echo "warning: no .env.local found — wrangler will need CLOUDFLARE_API_TOKEN in env" >&2
+fi
+exec npx --yes wrangler@latest pages deploy . --project-name vtt-ui --commit-dirty=true "$@"

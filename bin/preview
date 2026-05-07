@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Run the site locally with `wrangler pages dev` so Pages Functions execute.
+# Default port 8788 to avoid clashing with serve.py on 8765.
+set -euo pipefail
+cd "$(dirname "$0")/../site"
+ENV_FILE=""
+for f in /mnt/ssd/development/video-to-text/.env.local "$HOME/development/vtt-ui/.env.local" ../.env.local; do
+  if [ -f "$f" ]; then ENV_FILE="$f"; break; fi
+done
+if [ -n "$ENV_FILE" ]; then set -a; . "$ENV_FILE"; set +a; fi
+exec npx --yes wrangler@latest pages dev . --port "${PORT:-8788}" "$@"
