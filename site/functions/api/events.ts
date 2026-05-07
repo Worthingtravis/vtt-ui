@@ -30,6 +30,7 @@ interface EventsIndex {
   n_vods?: number;
   per_class_counts?: Record<string, number>;
   classes?: string[];
+  vod_durations?: Record<string, number>; // schema_version >= 2 — keyed "creator/basename"
   events?: EventRow[];
 }
 interface VodMetaRow { c: string; b: string; tv: string; title?: string }
@@ -144,6 +145,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ request, env }) => {
       },
       classes: eventsIdx.classes || [],
       per_class_counts: eventsIdx.per_class_counts || {},
+      vod_durations: eventsIdx.vod_durations || {},
       generated_at: eventsIdx.generated_at,
       n_total: hits.length,
       hits: hits.slice(0, limit),

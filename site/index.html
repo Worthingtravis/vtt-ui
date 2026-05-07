@@ -682,12 +682,14 @@ async function renderVodDetailCard(creator, basename, t) {
     if (tHasValue) setTimeout(() => pb.click(), 200);
   }
   // Async: fetch this VOD's events from /api/events and inline a timeline card.
-  loadEventsForVod(v).then((evs) => {
-    if (!evs.length) return;
+  loadEventsForVod(v).then(({ events, duration }) => {
+    if (!events.length) return;
     const eventBox = document.getElementById("vdEvents");
     if (!eventBox) return;
     eventBox.innerHTML = renderVodTimelineCard({
-      c: v.c, b: v.b, tv: v.tv, title: v.title, events: evs,
+      c: v.c, b: v.b, tv: v.tv, title: v.title,
+      duration: duration,
+      events,
     });
     attachTimelineHandlers();
     refreshIcons();
@@ -697,10 +699,12 @@ async function renderVodDetailCard(creator, basename, t) {
 async function loadEventsForVod(v) {
   try {
     const r = await fetch(`/api/events?creator=${encodeURIComponent(v.c)}&limit=2000`);
-    if (!r.ok) return [];
+    if (!r.ok) return { events: [], duration: null };
     const d = await r.json();
-    return (d.hits || []).map((h) => h.rec).filter((e) => e.c === v.c && e.b === v.b);
-  } catch { return []; }
+    const events = (d.hits || []).map((h) => h.rec).filter((e) => e.c === v.c && e.b === v.b);
+    const duration = (d.vod_durations || {})[`${v.c}/${v.b}`] || null;
+    return { events, duration };
+  } catch { return { events: [], duration: null }; }
 }
 const STAR_KEY = "vtt_starred_v1";
 const RECENT_KEY = "vtt_recent_v1";
@@ -1154,6 +1158,7 @@ async function runEventSearch(creator, reqId) {
   if (reqId !== lastReq) return;
 
   state.eventCounts = resp.per_class_counts || {};
+  state.vodDurations = resp.vod_durations || {};
   renderEventChips(state.eventCounts);
 
   const hits = resp.hits || [];
@@ -1207,7 +1212,13 @@ function renderEventTimelines(hits) {
     const e = h.rec || h;
     const key = `${e.c}/${e.b}`;
     if (!byVod.has(key)) {
-      byVod.set(key, { c: e.c, b: e.b, tv: e.tv || "", title: e.title || "", events: [] });
+      byVod.set(key, {
+        c: e.c, b: e.b, tv: e.tv || "", title: e.title || "",
+        // schema_version >= 2 — true VOD duration if known, else null and
+        // renderVodTimelineCard falls back to max(event_t)*1.05.
+        duration: (state.vodDurations || {})[key] || null,
+        events: [],
+      });
     }
     byVod.get(key).events.push(e);
   }
@@ -1219,11 +1230,12 @@ function renderEventTimelines(hits) {
 }
 
 function renderVodTimelineCard(v) {
-  // Public vods/index.json doesn't yet expose duration, so we scale to
-  // max(event_t) + 5%. Phase 2 adds vod_duration via a backend extension
-  // and replaces this with a true 0..duration scale.
+  // events_index schema v2+ ships per-VOD durations as a top-level
+  // {`creator/basename`: seconds} map. Use it when present so the timeline
+  // scales to the real VOD length; otherwise fall back to max(event_t)*1.05
+  // (only kicks in if the VOD lacks a transcript and ffprobe failed).
   const maxT = v.events.reduce((m, e) => Math.max(m, e.t), 0) || 1;
-  const tlMax = maxT * 1.05;
+  const tlMax = (v.duration && v.duration > maxT) ? v.duration : maxT * 1.05;
   const counts = {};
   for (const e of v.events) counts[e.e] = (counts[e.e] || 0) + 1;
   // Sort ticks by time ascending — purely cosmetic so clusters draw left-to-right.
