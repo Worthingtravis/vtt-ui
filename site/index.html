@@ -3071,10 +3071,17 @@ function applyAnchor() {
   if (w < sr.width) left += (sr.width - w) / 2; // center if narrower than container
   if (left + w > window.innerWidth - 8) left = Math.max(8, window.innerWidth - 8 - w);
   if (left < 8) left = 8;
-  const top = Math.max(8, sr.top + 8);
-  // Hide if the container is fully out of viewport.
+  // Sticky-but-bounded: stick at top:8 while there's room, but cap the player's
+  // bottom to the active container's bottom so it slides off with its own VOD
+  // instead of pinning at the top of the viewport while rows from a *different*
+  // VOD scroll past behind it.
+  const naturalTop = sr.top + 8;
+  const stickyTop = Math.max(8, naturalTop);
+  let top = stickyTop;
   if (_anchorContainer) {
     const cr = _anchorContainer.getBoundingClientRect();
+    const bottomCap = cr.bottom - totalH - 8;
+    top = Math.min(stickyTop, bottomCap);
     const offscreen = cr.bottom < 0 || cr.top > window.innerHeight;
     _twitchPanel.style.visibility = offscreen ? "hidden" : "";
   }
