@@ -180,40 +180,52 @@ async function verifyPayment(
     maxTimeoutSeconds: 30,
     asset,
   };
-  let payload: unknown;
+  // x402 v2 facilitator wants the DECODED PaymentPayload object plus an
+  // x402Version field at the top level — not the raw base64 header string.
+  // Older drafts of the spec used `paymentHeader: <b64>`; current Coinbase
+  // CDP facilitator (x402.org/facilitator) returns 400 on that shape.
+  let payload: { x402Version?: number; payload?: { authorization?: { from?: string } } };
   try {
     payload = JSON.parse(atob(paymentHeader));
   } catch {
     return { ok: false, error: "invalid X-PAYMENT header (not base64-json)" };
   }
+  const x402Version = payload.x402Version || 1;
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 5000);
   let body: unknown;
+  let status = 0;
   try {
     const r = await fetch(`${facilitator}/verify`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ paymentHeader, paymentRequirements: requirement }),
+      body: JSON.stringify({
+        x402Version,
+        paymentPayload: payload,
+        paymentRequirements: requirement,
+      }),
       signal: ctl.signal,
     });
-    body = await r.json();
+    status = r.status;
+    body = await r.json().catch(() => ({}));
     if (!r.ok) {
-      return { ok: false, error: `facilitator /verify ${r.status}`, raw: body };
+      return { ok: false, error: `facilitator /verify ${r.status}: ${JSON.stringify(body).slice(0, 200)}`, raw: body };
     }
   } catch (e) {
     return { ok: false, error: `facilitator unreachable: ${(e as Error).message}` };
   } finally {
     clearTimeout(timer);
   }
-  // Spec field naming has wobbled across versions; accept either.
-  const isValid = (body as { isValid?: boolean }).isValid === true || (body as { ok?: boolean }).ok === true;
+  // Spec field naming has wobbled; accept isValid OR ok OR success.
+  const b = body as { isValid?: boolean; ok?: boolean; success?: boolean; valid?: boolean };
+  const isValid = b.isValid === true || b.ok === true || b.success === true || b.valid === true;
   if (!isValid) {
-    return { ok: false, error: "verify rejected", raw: body };
+    return { ok: false, error: `verify rejected: ${JSON.stringify(body).slice(0, 200)}`, raw: body };
   }
   return {
     ok: true,
     requirement,
-    payerAddress: (payload as { payload?: { authorization?: { from?: string } } }).payload?.authorization?.from,
+    payerAddress: payload.payload?.authorization?.from,
     raw: body,
   };
 }
@@ -224,20 +236,32 @@ async function settlePayment(
   env: GateEnv,
 ): Promise<PaymentSettleResult> {
   const facilitator = env.X402_FACILITATOR_URL || DEFAULT_FACILITATOR;
+  let payload: { x402Version?: number };
+  try {
+    payload = JSON.parse(atob(paymentHeader));
+  } catch {
+    return { ok: false, error: "invalid X-PAYMENT header (not base64-json)" };
+  }
+  const x402Version = payload.x402Version || 1;
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), 15_000);
   try {
     const r = await fetch(`${facilitator}/settle`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ paymentHeader, paymentRequirements: requirement }),
+      body: JSON.stringify({
+        x402Version,
+        paymentPayload: payload,
+        paymentRequirements: requirement,
+      }),
       signal: ctl.signal,
     });
-    const body = await r.json();
-    if (!r.ok) return { ok: false, error: `facilitator /settle ${r.status}`, raw: body };
+    const body = await r.json().catch(() => ({}));
+    if (!r.ok) return { ok: false, error: `facilitator /settle ${r.status}: ${JSON.stringify(body).slice(0, 200)}`, raw: body };
     const txHash =
       (body as { transaction?: string }).transaction ??
       (body as { txHash?: string }).txHash ??
+      (body as { transactionHash?: string }).transactionHash ??
       undefined;
     return { ok: true, txHash, raw: body };
   } catch (e) {
