@@ -1952,8 +1952,11 @@ async function runSearch() {
 
   pushRecent(q, mode, creator);
   const tokens = q.toLowerCase().split(/\s+/).filter(Boolean);
-  const hits = resp.hits || [];
-  $("#count").textContent = `${resp.n_total} hits (${resp.n_clip_hits} clips · ${resp.n_vod_hits} vods)`;
+  // Clips mode is hidden from the UI — drop clip hits at the boundary so
+  // they never appear in search results either. The /api/search backend
+  // still returns them; we just don't render them.
+  const hits = (resp.hits || []).filter((h) => h.kind !== "clip");
+  $("#count").textContent = `${hits.length} hit${hits.length === 1 ? "" : "s"}`;
   if (!hits.length) {
     $("#results").innerHTML = `<div class="empty">no matches.</div>`;
     state.lastHits = [];
@@ -2035,19 +2038,19 @@ function browseVodCard(v, evIdx) {
 }
 
 function renderSaved(creator) {
-  const all = Array.from(state.starred.values());
-  const filtered = creator ? all.filter((h) => (h.kind === "clip" ? h.rec.creator : h.rec.c) === creator) : all;
+  // Clips mode is hidden — drop any clip-kind hits that may have been
+  // starred in an earlier session. The starred Map keeps them; we just
+  // don't render them here.
+  const all = Array.from(state.starred.values()).filter((h) => h.kind !== "clip");
+  const filtered = creator ? all.filter((h) => h.rec.c === creator) : all;
   $("#count").textContent = `${filtered.length} saved${creator ? " · " + creator : ""}`;
   if (!filtered.length) {
     $("#results").innerHTML = `<div class="empty">no saved hits yet · click ☆ on any row to save it here</div>`;
     state.lastHits = [];
     return;
   }
-  // Group: clips first, then VOD hits (no auto-grouping by VOD here — user explicitly picked these)
-  const clips = filtered.filter((h) => h.kind === "clip");
-  const vods = filtered.filter((h) => h.kind === "vod");
-  state.lastHits = [...clips, ...vods];
-  renderHits(state.lastHits, []);
+  state.lastHits = filtered;
+  renderHits(filtered, []);
 }
 
 function renderHits(hits, tokens) {
