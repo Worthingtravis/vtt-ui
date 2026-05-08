@@ -1631,6 +1631,24 @@ function fmtT(s) {
 function fmtDate(s) { if (!s) return ""; const m = String(s).match(/(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[1]}-${m[2]}-${m[3]}` : ""; }
 function escape(s) { return String(s).replace(/[&<>"']/g, (c) => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c])); }
 
+// Build a v_proxy URL for inline VOD playback. The Pages Function at
+// /api/v_proxy/<login>/<stream_id>/index.m3u8 fetches a fresh m3u8 from
+// vodvod.top, rewrites segment URLs to flow through /api/v_proxy/seg, and
+// emits with Access-Control-Allow-Origin: * so hls.js can play it
+// cross-origin. Required because vodvod's m3u8 is locked to its own
+// origin and CloudFront chunks have no CORS headers.
+//
+// Usage: vProxyM3u8("beezwaxx", "317682276055", 120) →
+//   "/api/v_proxy/beezwaxx/317682276055/index.m3u8?t=120"
+//
+// The browser side still needs hls.js (or native HLS in Safari) to
+// actually play the m3u8. See project_storage_tiering_proposal.md for
+// the full plan; the consuming UI surface is a follow-up.
+function vProxyM3u8(login, streamId, t) {
+  const base = `/api/v_proxy/${encodeURIComponent(login)}/${encodeURIComponent(streamId)}/index.m3u8`;
+  return (t == null) ? base : `${base}?t=${Number(t).toFixed(2)}`;
+}
+
 // Landing card surfaced when the search input is empty. Doubles as the
 // product roadmap so first-time visitors see what's shipped, what's
 // imminent, and where the project is heading. Order within each list is
@@ -1758,7 +1776,10 @@ let _allVodsCache = null;  // unfiltered — used by deep-link VOD lookup
 async function loadAllVodsIndex() {
   if (_allVodsCache !== null) return _allVodsCache;
   try {
-    const r = await fetch(`${PUBLIC_BASE}/vods/index.json`, { cache: "force-cache" });
+    // no-store so freshly-published VODs surface without a hard refresh.
+    // Index is ~12 KB so the per-load cost is negligible. We keep the
+    // in-memory _allVodsCache for repeat lookups within the same session.
+    const r = await fetch(`${PUBLIC_BASE}/vods/index.json`, { cache: "no-store" });
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const d = await r.json();
     _allVodsCache = d.vods || [];
