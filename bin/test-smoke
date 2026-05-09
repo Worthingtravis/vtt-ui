@@ -56,7 +56,8 @@ echo "== Transition banner =="
 # Site is in transition mode — index.html ships a banner pointing users
 # to the new experience at video.laughingwhales.com. Make sure it's
 # present so a regression doesn't silently strip the redirect.
-if curl -s --compressed "$BASE/" | grep -qF 'video.laughingwhales.com'; then
+curl -s --compressed -o /tmp/_smoke_banner "$BASE/"
+if grep -qF 'video.laughingwhales.com' /tmp/_smoke_banner; then
   ok "transition banner present on /"
 else
   bad "transition banner missing — link to video.laughingwhales.com not found"
