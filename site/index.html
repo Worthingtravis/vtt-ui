@@ -316,6 +316,43 @@
     .row .micro button.starred { color: #fde047; }
     .row { position: relative; }
     .row .head { padding-right: 56px; } /* leave room for micro buttons */
+
+    /* Bulk-download (⭐ saved tab) — toolbar above results + per-row select.
+       Hidden outside saved mode via #results[data-mode] gating, so the
+       checkbox markup can live in segRow once and just stay invisible
+       in transcript / events / VOD tabs. */
+    .bulk-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; margin-bottom: 12px; background: linear-gradient(135deg, #0c1729 0%, #0f1c33 100%); border: 1px solid #334155; border-radius: 8px; flex-wrap: wrap; }
+    .bulk-bar .bulk-check-all { display: flex; align-items: center; gap: 6px; color: #cbd5e1; font-size: 12px; cursor: pointer; user-select: none; }
+    .bulk-bar .bulk-check-all input { accent-color: #38bdf8; cursor: pointer; }
+    .bulk-bar .bulk-count { color: #94a3b8; font-size: 11px; flex: 1; min-width: 80px; }
+    .bulk-bar button { background: #0c4a6e; color: #e0f2fe; border: 1px solid #075985; padding: 7px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; font-family: inherit; display: inline-flex; gap: 6px; align-items: center; }
+    .bulk-bar button[hidden] { display: none; } /* beats the inline-flex above */
+    .bulk-bar button:hover { background: #0e7490; }
+    .bulk-bar button:disabled { opacity: .4; cursor: not-allowed; }
+    .bulk-bar button.primary { background: #047857; border-color: #059669; color: #d1fae5; font-weight: 600; }
+    .bulk-bar button.primary:hover { background: #059669; }
+    .bulk-bar button.danger { background: #7f1d1d; border-color: #991b1b; color: #fee2e2; }
+    .bulk-bar button.danger:hover { background: #991b1b; }
+    .bulk-bar .bulk-progress { color: #38bdf8; font-size: 11px; font-variant-numeric: tabular-nums; }
+    .bulk-bar .bulk-progress.err { color: #fca5a5; }
+    .bulk-bar .bulk-hint { color: #64748b; font-size: 10px; width: 100%; padding-top: 2px; }
+
+    /* Per-row checkbox — invisible until saved tab is active. */
+    .row .bulk-check-wrap { display: none; position: absolute; top: 10px; left: 10px; padding: 2px; cursor: pointer; z-index: 1; }
+    #results[data-mode="saved"] .row .bulk-check-wrap { display: flex; }
+    #results[data-mode="saved"] .row .head { padding-left: 28px; }
+    #results[data-mode="saved"] .row .head h3 { padding-left: 0; }
+    .row .bulk-check { accent-color: #38bdf8; cursor: pointer; width: 14px; height: 14px; margin: 0; }
+    .row.batch-selected { box-shadow: inset 3px 0 0 #38bdf8; }
+
+    /* Per-row batch-status pill — replaces the ✂ button while a batch is
+       running for that row, so users see exactly which clips are queued
+       vs rendering vs done. */
+    .row .cut-status { display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 4px; font-size: 12px; font-weight: 500; line-height: 1; }
+    .row .cut-status.queued { background: #1e293b; color: #94a3b8; border: 1px solid #334155; }
+    .row .cut-status.rendering { background: #0c4a6e; color: #bae6fd; border: 1px solid #0369a1; }
+    .row .cut-status.done { background: #064e3b; color: #bbf7d0; border: 1px solid #047857; }
+    .row .cut-status.failed { background: #7f1d1d; color: #fee2e2; border: 1px solid #991b1b; }
     /* keyboard-focused row */
     .row.kfocus { outline: 2px solid #38bdf8; outline-offset: -1px; }
     /* VOD grouping cards */
@@ -1679,6 +1716,7 @@ const ROADMAP = {
     ["submitter notifications", "your submissions are tagged with your account — close the tab safely and see live status in the 'your VODs' topbar pill on next visit"],
     ["job-state persistence", "serve.py restarts no longer drop in-flight job history; jobs.jsonl write-through + orphan detection on boot rehydrate"],
     ["auto-scan after transcribe", "public VOD submissions automatically chain xcorr event scan after transcription so the events lane is populated end-to-end"],
+    ["⬇ batch-download saved clips", "⭐ saved tab now has per-row checkboxes + a 'download all' button that fans out 3 cuts in parallel and downloads each mp4 the moment it's ready — grab a video-edit-ready batch in one click"],
   ],
   next: [
     ["named cloudflared tunnel", "stable hostname between Pages and serve.py — no more 502 window when serve.py restarts"],
@@ -2046,11 +2084,37 @@ function renderSaved(creator) {
   $("#count").textContent = `${filtered.length} saved${creator ? " · " + creator : ""}`;
   if (!filtered.length) {
     $("#results").innerHTML = `<div class="empty">no saved hits yet · click ☆ on any row to save it here</div>`;
+    $("#results").removeAttribute("data-mode");
     state.lastHits = [];
     return;
   }
   state.lastHits = filtered;
-  renderHits(filtered, []);
+  // Bulk-download toolbar — renders only inside the saved tab so the
+  // per-row checkboxes (always present in segRow markup, hidden via
+  // [data-mode="saved"] CSS) become visible alongside their controller.
+  const apiOk = !!RENDER_API;
+  const bar = `
+    <div class="bulk-bar" id="bulkBar">
+      <label class="bulk-check-all" title="select / deselect every saved hit">
+        <input type="checkbox" id="bulkCheckAll"> all
+      </label>
+      <span class="bulk-count">${filtered.length} starred${apiOk ? "" : " · <span style='color:#fca5a5;'>render API offline</span>"}</span>
+      <button id="bulkSel" disabled>⬇ download selected</button>
+      <button id="bulkAll" class="primary"${apiOk ? "" : " disabled"}>⬇ download all (${filtered.length})</button>
+      <button id="bulkCancel" class="danger" hidden>✕ cancel</button>
+      <span class="bulk-progress" id="bulkProgress"></span>
+      <span class="bulk-hint">batch renders 3 in parallel · 50/batch cap · each clip downloads as it finishes</span>
+    </div>`;
+  $("#results").innerHTML = bar + filtered.map((h) => h.kind === "clip"
+    ? clipRow(h.rec, [])
+    // Pass the original hit through so segRow's data-key matches the
+    // starred-Map key for event-kind entries (otherwise the star icon
+    // shows ☆ on a row that IS starred and the unstar click no-ops).
+    : segRow(h.rec, [], { hit: h })).join("");
+  $("#results").dataset.mode = "saved";
+  attachRowHandlers();
+  attachBulkBarHandlers();
+  state.focusIdx = -1;
 }
 
 function renderHits(hits, tokens) {
@@ -2076,6 +2140,10 @@ function renderHits(hits, tokens) {
     html = hits.map((h) => h.kind === "clip" ? clipRow(h.rec, tokens) : segRow(h.rec, tokens)).join("");
   }
   $("#results").innerHTML = html;
+  // Non-saved tabs share segRow with the saved tab but must hide the
+  // batch-checkbox column. The CSS gates on this attribute.
+  if (state.mode === "saved") $("#results").dataset.mode = "saved";
+  else $("#results").removeAttribute("data-mode");
   attachRowHandlers();
   state.focusIdx = -1;
 }
@@ -3265,61 +3333,266 @@ function togglePlayer(el) {
   if (v) v.play().catch(() => {});
 }
 
+// Build a cut payload from a [data-cut] button's dataset. Returns null
+// for non-cuttable rows (event-mode entries lacking d, anything where
+// the math goes non-finite). Shared between single-row and bulk paths.
+function payloadFromCutBtn(btn) {
+  const ds = btn.dataset;
+  const start = parseFloat(ds.start) - parseFloat(ds.padBefore || 0);
+  const end = parseFloat(ds.end) + parseFloat(ds.padAfter || 0);
+  if (!isFinite(start) || !isFinite(end) || end <= start) return null;
+  const title = (ds.title || "segment").slice(0, 80);
+  return {
+    creator: ds.creator,
+    vod_file: ds.vodfile,
+    start: Math.max(0, start),
+    end,
+    title,
+    text: title,
+  };
+}
+
+// Network-only cut. Returns { id, url } on success, throws on failure.
+// Used by both the single-row click handler and the bulk runner.
+async function cutSegmentRequest(payload) {
+  if (!RENDER_API) throw new Error("render API offline");
+  const r = await fetch(`${RENDER_API}/api/clip`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!r.ok) {
+    const err = await r.text().catch(() => `HTTP ${r.status}`);
+    throw new Error(err.slice(0, 120));
+  }
+  const body = await r.json();
+  const clip = body.clip;
+  if (!clip || !clip.id) throw new Error("no clip in response");
+  return { id: clip.id, url: `${PUBLIC_BASE}/clips/${clip.id}.mp4` };
+}
+
 async function onSegmentCut(btn) {
   if (!RENDER_API) {
     btn.textContent = "no api configured";
     return;
   }
-  const ds = btn.dataset;
-  const start = Math.max(0, parseFloat(ds.start) - parseFloat(ds.padBefore || 0));
-  const end = parseFloat(ds.end) + parseFloat(ds.padAfter || 0);
-  const title = (ds.title || "segment").slice(0, 80);
+  const payload = payloadFromCutBtn(btn);
+  if (!payload) {
+    btn.textContent = "cut unavailable";
+    btn.disabled = true;
+    return;
+  }
   btn.disabled = true;
   btn.textContent = "rendering mp4…";
   const actions = btn.parentElement;
   try {
-    const r = await fetch(`${RENDER_API}/api/clip`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        creator: ds.creator,
-        vod_file: ds.vodfile,
-        start, end,
-        title,
-        text: title,
-      }),
-    });
-    if (!r.ok) {
-      const err = await r.text().catch(() => `HTTP ${r.status}`);
-      throw new Error(err.slice(0, 120));
-    }
-    const body = await r.json();
-    const clip = body.clip;
-    if (!clip || !clip.id) throw new Error("no clip in response");
+    const { url: dlUrl } = await cutSegmentRequest(payload);
     btn.textContent = "✓ rendered — downloading…";
     btn.style.background = "#064e3b";
-    // Public URL is built from the clip id once published
-    const dlUrl = `${PUBLIC_BASE}/clips/${clip.id}.mp4`;
     const a = document.createElement("a");
     a.className = "primary"; a.href = dlUrl; a.download = "";
     a.textContent = "⬇ download again";
     a.title = "the file already started downloading; click to grab it again";
     a.style.marginTop = "4px";
     actions.appendChild(a);
-    // Trigger download automatically
     setTimeout(() => a.click(), 200);
   } catch (e) {
     // Mark this VOD as un-cuttable for the rest of the session and replace
     // the button with a disabled inline note. No retry button — the same
     // backend with the same source isn't going to start working between
     // clicks. Refresh-to-retry stays available; the failure clears on reload.
-    markCutFailed(ds.creator, ds.vodfile);
+    markCutFailed(btn.dataset.creator, btn.dataset.vodfile);
     const note = document.createElement("span");
     note.className = "cut-failed";
     note.title = String(e);
     note.textContent = "⚠ cut unavailable";
     btn.replaceWith(note);
   }
+}
+
+// ── Bulk download (saved tab) -----------------------------------------------
+// Concurrency-capped fan-out of /api/clip calls. Each clip auto-downloads
+// as soon as it returns; download triggers are staggered so the browser
+// doesn't queue 50 anchor-clicks back-to-back (Chrome will start blocking
+// after ~10 rapid downloads from the same origin).
+
+const bulk = {
+  running: false,
+  cancel: false,
+  cap: 50,
+  concurrency: 3,
+  staggerMs: 350,
+};
+
+function bulkRows() {
+  // Saved-tab rows that have a working cut button. Cut-failed rows skip
+  // automatically because their [data-cut] was already replaced by a
+  // <span class="cut-failed"> in onSegmentCut.
+  const out = [];
+  $$("#results .row[data-key]").forEach((row) => {
+    const btn = row.querySelector("[data-cut]");
+    if (!btn) return;
+    const payload = payloadFromCutBtn(btn);
+    if (!payload) return;
+    out.push({ row, btn, payload, key: row.dataset.key });
+  });
+  return out;
+}
+
+function bulkSelected() {
+  return bulkRows().filter((r) => {
+    const cb = r.row.querySelector(".bulk-check");
+    return cb && cb.checked;
+  });
+}
+
+function setBulkRowStatus(row, status) {
+  // status: queued | rendering | done | failed | reset
+  const actions = row.querySelector(".actions");
+  if (!actions) return;
+  let pill = actions.querySelector(".cut-status");
+  const cutBtn = actions.querySelector("[data-cut]");
+  if (status === "reset") {
+    if (pill) pill.remove();
+    if (cutBtn) cutBtn.style.display = "";
+    return;
+  }
+  if (!pill) {
+    pill = document.createElement("span");
+    actions.insertBefore(pill, actions.firstChild);
+  }
+  if (cutBtn) cutBtn.style.display = "none";
+  pill.className = `cut-status ${status}`;
+  pill.textContent = ({
+    queued: "queued",
+    rendering: "rendering…",
+    done: "✓ downloaded",
+    failed: "⚠ failed",
+  })[status] || status;
+}
+
+async function bulkDownloadRun(items) {
+  if (!items.length) { toast("nothing to download"); return; }
+  if (bulk.running) { toast("a batch is already running"); return; }
+  if (items.length > bulk.cap) {
+    if (!confirm(`This will render ${items.length} clips. The cap is ${bulk.cap} per batch — only the first ${bulk.cap} will run.`)) return;
+    items = items.slice(0, bulk.cap);
+  }
+  bulk.running = true; bulk.cancel = false;
+
+  for (const it of items) setBulkRowStatus(it.row, "queued");
+
+  const total = items.length;
+  let done = 0, failed = 0;
+  const progressEl = $("#bulkProgress");
+  const allBtn = $("#bulkAll");
+  const selBtn = $("#bulkSel");
+  const cancelBtn = $("#bulkCancel");
+  const checkAll = $("#bulkCheckAll");
+  if (allBtn) allBtn.disabled = true;
+  if (selBtn) selBtn.disabled = true;
+  if (checkAll) checkAll.disabled = true;
+  if (cancelBtn) cancelBtn.hidden = false;
+
+  const update = () => {
+    if (!progressEl) return;
+    progressEl.textContent = `${done}/${total} done${failed ? ` · ${failed} failed` : ""}${bulk.cancel ? " · cancelling…" : ""}`;
+    progressEl.classList.toggle("err", failed > 0);
+  };
+  update();
+
+  // Stagger download triggers so Chrome doesn't queue rapid anchor-clicks.
+  let lastDownloadAt = 0;
+  async function triggerDownload(url, suggestedName) {
+    const wait = Math.max(0, lastDownloadAt + bulk.staggerMs - Date.now());
+    if (wait) await new Promise((r) => setTimeout(r, wait));
+    lastDownloadAt = Date.now();
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = suggestedName || "";
+    a.style.display = "none";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => a.remove(), 1500);
+  }
+
+  const queue = items.slice();
+  const worker = async () => {
+    while (queue.length) {
+      if (bulk.cancel) return;
+      const it = queue.shift();
+      setBulkRowStatus(it.row, "rendering");
+      try {
+        const { url } = await cutSegmentRequest(it.payload);
+        await triggerDownload(url);
+        setBulkRowStatus(it.row, "done");
+        done++;
+      } catch (e) {
+        console.warn("[bulk] cut failed", it.payload, e);
+        setBulkRowStatus(it.row, "failed");
+        failed++;
+      }
+      update();
+    }
+  };
+  const pool = [];
+  for (let i = 0; i < Math.min(bulk.concurrency, items.length); i++) pool.push(worker());
+  await Promise.all(pool);
+
+  bulk.running = false;
+  if (allBtn) allBtn.disabled = false;
+  if (selBtn) selBtn.disabled = bulkSelected().length === 0;
+  if (checkAll) checkAll.disabled = false;
+  if (cancelBtn) cancelBtn.hidden = true;
+  toast(failed ? `${done} downloaded · ${failed} failed` : `${done} downloaded ★`);
+}
+
+function attachBulkBarHandlers() {
+  const bar = $("#bulkBar");
+  if (!bar) return;
+  const checkAll = $("#bulkCheckAll");
+  const selBtn = $("#bulkSel");
+  const allBtn = $("#bulkAll");
+  const cancelBtn = $("#bulkCancel");
+
+  const updateSelCount = () => {
+    const sel = bulkSelected().length;
+    if (selBtn) {
+      selBtn.disabled = sel === 0 || bulk.running;
+      selBtn.textContent = sel ? `⬇ download selected (${sel})` : "⬇ download selected";
+    }
+    if (checkAll) {
+      const rows = bulkRows();
+      checkAll.checked = rows.length > 0 && sel === rows.length;
+      checkAll.indeterminate = sel > 0 && sel < rows.length;
+    }
+  };
+
+  $$("#results .bulk-check").forEach((cb) => {
+    cb.addEventListener("change", () => {
+      cb.closest(".row").classList.toggle("batch-selected", cb.checked);
+      updateSelCount();
+    });
+    cb.addEventListener("click", (ev) => ev.stopPropagation());
+  });
+
+  if (checkAll) {
+    checkAll.addEventListener("change", () => {
+      const want = checkAll.checked;
+      $$("#results .bulk-check").forEach((cb) => {
+        cb.checked = want;
+        cb.closest(".row").classList.toggle("batch-selected", want);
+      });
+      updateSelCount();
+    });
+  }
+  if (allBtn) allBtn.addEventListener("click", () => bulkDownloadRun(bulkRows()));
+  if (selBtn) selBtn.addEventListener("click", () => bulkDownloadRun(bulkSelected()));
+  if (cancelBtn) cancelBtn.addEventListener("click", () => {
+    bulk.cancel = true;
+    toast("cancelling… in-flight cuts will finish");
+  });
+  updateSelCount();
 }
 
 function microButtons(h) {
@@ -3385,6 +3658,12 @@ function segRow(s, tokens, opts) {
   opts = opts || {};
   const showCreator = opts.showCreator !== false;  // hide inside grouped VOD card
   const showBasename = opts.showBasename !== false;
+  // Saved-tab event-starred entries reach this renderer because the saved
+  // map can hold both vod-kind and event-kind hits. Without this, segRow
+  // would hard-wrap the rec as `{kind:"vod"}` and compute the wrong
+  // hitKey — making isStarred() return false and the ☆ icon render
+  // unfilled even on rows that ARE starred.
+  const hitOverride = opts.hit;
   // Default 2s before / 1s after pads (standard reaction-clip framing)
   const padBefore = 2, padAfter = 1;
   const cutTitle = (s.x || "").slice(0, 60);
@@ -3403,9 +3682,13 @@ function segRow(s, tokens, opts) {
   const tvPlayerEl = s.tv
     ? `<div class="player twitch-player" data-tv="${escape(s.tv)}" data-time="${twitchTime}" data-tsec="${s.t}"></div>`
     : "";
-  const h = { kind: "vod", rec: s };
+  // Use the caller-provided hit (preserves event-kind from the saved tab)
+  // so data-key + isStarred + findHitByKey all line up. Falls back to a
+  // vod-kind wrapper for the regular search/browse callers.
+  const h = hitOverride || { kind: "vod", rec: s };
   return `
     <div class="row vod vod-row" data-key="${escape(hitKey(h))}">
+      <label class="bulk-check-wrap" title="select for batch download"><input type="checkbox" class="bulk-check"></label>
       ${microButtons(h)}
       <div class="head">
         <div>
