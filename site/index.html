@@ -353,6 +353,20 @@
     .row .cut-status.rendering { background: #0c4a6e; color: #bae6fd; border: 1px solid #0369a1; }
     .row .cut-status.done { background: #064e3b; color: #bbf7d0; border: 1px solid #047857; }
     .row .cut-status.failed { background: #7f1d1d; color: #fee2e2; border: 1px solid #991b1b; }
+
+    /* Per-row segment tweak controls — let the user nudge the cut range
+       in 0.5s steps before rendering. Saved-tab only so the search results
+       stay clean; the click handlers mutate data-pad-before/data-pad-after
+       on the cut button so both single-cut and bulk paths see the new
+       range without needing a separate state model. */
+    .row .seg-tweak { display: none; gap: 4px; align-items: center; padding: 6px 0 0; font-size: 11px; color: #94a3b8; flex-wrap: wrap; justify-content: flex-end; }
+    #results[data-mode="saved"] .row .seg-tweak { display: flex; }
+    .row .seg-tweak button { background: #1e293b; color: #cbd5e1; border: 1px solid #334155; padding: 3px 7px; font-size: 10px; border-radius: 3px; cursor: pointer; font-family: inherit; line-height: 1.2; }
+    .row .seg-tweak button:hover { background: #334155; color: #e0f2fe; border-color: #475569; }
+    .row .seg-tweak button.tweaked { background: #0c4a6e; color: #bae6fd; border-color: #0369a1; }
+    .row .seg-tweak .seg-range { color: #7dd3fc; font-variant-numeric: tabular-nums; padding: 0 6px; }
+    .row .seg-tweak .seg-reset { color: #64748b; }
+    .row .seg-tweak .seg-reset:hover { color: #fca5a5; }
     /* keyboard-focused row */
     .row.kfocus { outline: 2px solid #38bdf8; outline-offset: -1px; }
     /* VOD grouping cards */
@@ -2896,6 +2910,56 @@ function attachRowHandlers() {
   $$("[data-cut]").forEach((btn) => {
     btn.addEventListener("click", () => onSegmentCut(btn));
   });
+  // Saved-tab segment tweak controls — nudge the cut range without
+  // re-rendering the row, so subsequent ✂ cut or bulk-download picks up
+  // the user's adjusted pads. Mutates data-pad-before / data-pad-after
+  // on the row's [data-cut] button (the same fields payloadFromCutBtn
+  // reads), then refreshes the visible range readout.
+  $$(".seg-tweak [data-tweak]").forEach((btn) => {
+    btn.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const row = btn.closest(".row");
+      if (!row) return;
+      const cutBtn = row.querySelector("[data-cut]");
+      if (!cutBtn) return;
+      const action = btn.dataset.tweak;
+      const step = 0.5;
+      const start = parseFloat(cutBtn.dataset.start);
+      const end = parseFloat(cutBtn.dataset.end);
+      let padBefore = parseFloat(cutBtn.dataset.padBefore || "2");
+      let padAfter = parseFloat(cutBtn.dataset.padAfter || "1");
+      if (action === "reset") {
+        padBefore = 2; padAfter = 1;
+      } else {
+        let nb = padBefore, na = padAfter;
+        if (action === "start-earlier") nb += step;
+        else if (action === "start-later") nb -= step;
+        else if (action === "end-earlier") na -= step;
+        else if (action === "end-later") na += step;
+        const effStart = Math.max(0, start - nb);
+        const effEnd = end + na;
+        if (effEnd - effStart < 0.5) {
+          toast("min cut length 0.5s — can't shrink further");
+          return;
+        }
+        padBefore = nb; padAfter = na;
+      }
+      cutBtn.dataset.padBefore = padBefore.toFixed(1);
+      cutBtn.dataset.padAfter = padAfter.toFixed(1);
+      const effStart = Math.max(0, start - padBefore);
+      const effEnd = end + padAfter;
+      const effDur = effEnd - effStart;
+      const range = row.querySelector("[data-seg-range]");
+      if (range) range.textContent = `${effDur.toFixed(1)}s · ${fmtT(effStart)}–${fmtT(effEnd)}`;
+      cutBtn.title = `cut a clean ${effDur.toFixed(1)}s mp4 from the source VOD and download it`;
+      // Mark every nudge button on this row as "tweaked" so the row visibly
+      // signals that it's been modified from defaults (highlight reverts on
+      // ↺ reset since padBefore/padAfter snap back to 2/1).
+      const isDefault = padBefore === 2 && padAfter === 1;
+      row.querySelectorAll(".seg-tweak [data-tweak]:not(.seg-reset)").forEach(b =>
+        b.classList.toggle("tweaked", !isDefault));
+    });
+  });
   $$("[data-twitch]").forEach((btn) => {
     btn.addEventListener("click", (ev) => { ev.stopPropagation(); togglePlayer(btn.closest(".vod-row")); });
   });
@@ -3368,7 +3432,16 @@ async function cutSegmentRequest(payload) {
   const body = await r.json();
   const clip = body.clip;
   if (!clip || !clip.id) throw new Error("no clip in response");
-  return { id: clip.id, url: `${PUBLIC_BASE}/clips/${clip.id}.mp4` };
+  // Same-origin proxy so <a download> actually downloads instead of opening
+  // the mp4 in a browser tab — Chrome ignores `download` on cross-origin
+  // anchors, and R2 doesn't ship Content-Disposition. Pages Function at
+  // /api/dl/<id>.mp4 streams from R2 with the right header.
+  const fname = encodeURIComponent((clip.title || clip.id).slice(0, 80));
+  return {
+    id: clip.id,
+    url: `/api/dl/${encodeURIComponent(clip.id)}.mp4?n=${fname}`,
+    publicUrl: `${PUBLIC_BASE}/clips/${clip.id}.mp4`,
+  };
 }
 
 async function onSegmentCut(btn) {
@@ -3446,15 +3519,18 @@ function bulkSelected() {
   });
 }
 
-function setBulkRowStatus(row, status) {
+function setBulkRowStatus(row, status, opts) {
   // status: queued | rendering | done | failed | reset
+  opts = opts || {};
   const actions = row.querySelector(".actions");
   if (!actions) return;
   let pill = actions.querySelector(".cut-status");
   const cutBtn = actions.querySelector("[data-cut]");
+  const tweakBox = actions.querySelector(".seg-tweak");
   if (status === "reset") {
     if (pill) pill.remove();
     if (cutBtn) cutBtn.style.display = "";
+    if (tweakBox) tweakBox.style.display = "";
     return;
   }
   if (!pill) {
@@ -3462,6 +3538,7 @@ function setBulkRowStatus(row, status) {
     actions.insertBefore(pill, actions.firstChild);
   }
   if (cutBtn) cutBtn.style.display = "none";
+  if (tweakBox) tweakBox.style.display = "none";
   pill.className = `cut-status ${status}`;
   pill.textContent = ({
     queued: "queued",
@@ -3469,6 +3546,9 @@ function setBulkRowStatus(row, status) {
     done: "✓ downloaded",
     failed: "⚠ failed",
   })[status] || status;
+  // Surface the cut error as a tooltip on the failed pill so users can tell
+  // an audio-only-ingest VOD apart from a transient GPU-busy failure.
+  if (status === "failed" && opts.error) pill.title = String(opts.error).slice(0, 200);
 }
 
 async function bulkDownloadRun(items) {
@@ -3529,7 +3609,7 @@ async function bulkDownloadRun(items) {
         done++;
       } catch (e) {
         console.warn("[bulk] cut failed", it.payload, e);
-        setBulkRowStatus(it.row, "failed");
+        setBulkRowStatus(it.row, "failed", { error: e?.message || e });
         failed++;
       }
       update();
@@ -3601,7 +3681,10 @@ function microButtons(h) {
   // accordion's ev-item, just at the top-row level since list-view doesn't
   // nest under a .tl-card. Buttons render anonymous-dimmed and gate on
   // state.session in the click handler (see attachRowHandlers).
-  const isEvent = h && h.kind === "event";
+  // Vote buttons only make sense in event-mode review — they pollute the
+  // saved tab with detector-feedback affordances that aren't relevant when
+  // the user just wants to grab the clip.
+  const isEvent = h && h.kind === "event" && state.mode === "event";
   let voteHtml = "";
   if (isEvent) {
     const r = h.rec;
@@ -3705,11 +3788,19 @@ function segRow(s, tokens, opts) {
                   data-creator="${escape(s.c)}"
                   data-vodfile="${escape(s.b)}.mp4"
                   data-start="${s.t}"
-                  data-end="${(s.t + s.d).toFixed(2)}"
+                  data-end="${((+s.t || 0) + (+s.d || 0)).toFixed(2)}"
                   data-pad-before="${padBefore}"
                   data-pad-after="${padAfter}"
                   data-title="${escape(cutTitle)}"
-                  title="cut a clean ${(s.d + padBefore + padAfter).toFixed(1)}s mp4 from the source VOD and download it"><i data-lucide="scissors">✂</i> cut &amp; download mp4</button>`}
+                  title="cut a clean ${((+s.d || 0) + padBefore + padAfter).toFixed(1)}s mp4 from the source VOD and download it"><i data-lucide="scissors">✂</i> cut &amp; download mp4</button>
+              <div class="seg-tweak">
+                <button data-tweak="start-earlier" title="start 0.5s earlier (extend before)">⏪ start</button>
+                <button data-tweak="start-later" title="start 0.5s later (trim before)">start ⏩</button>
+                <span class="seg-range" data-seg-range>${((+s.d || 0) + padBefore + padAfter).toFixed(1)}s · ${fmtT(Math.max(0, (+s.t || 0) - padBefore))}–${fmtT((+s.t || 0) + (+s.d || 0) + padAfter)}</span>
+                <button data-tweak="end-earlier" title="end 0.5s earlier (trim after)">⏪ end</button>
+                <button data-tweak="end-later" title="end 0.5s later (extend after)">end ⏩</button>
+                <button data-tweak="reset" class="seg-reset" title="reset pads to default (2s before / 1s after)">↺</button>
+              </div>`}
           <button title="copy the source VOD basename + timestamp range to clipboard"
                   onclick="navigator.clipboard.writeText('${escape(s.b)}.mp4 @ ${s.t}-${(s.t + s.d).toFixed(1)}s')"><i data-lucide="clipboard">📋</i> copy timestamp ref</button>
         </div>
