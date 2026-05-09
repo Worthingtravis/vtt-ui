@@ -52,6 +52,18 @@
        screens. Anything inside that's intrinsically wider (e.g. the timeline
        track ticks) gets clipped rather than triggering horizontal scroll. */
     .tl-card, .vod-group, .row { box-sizing: border-box; max-width: 100%; overflow: hidden; }
+    /* Transition banner — non-dismissible, sticky at top, points users to
+       the new home. Sits above the topbar so layout flow pushes the header
+       down rather than overlapping it. */
+    #transitionBanner { position: sticky; top: 0; z-index: 300; width: 100%;
+      background: #9a3412; color: #fff; padding: 10px 16px; text-align: center;
+      font-size: 13px; font-weight: 500; border-bottom: 1px solid #7c2d12;
+      box-sizing: border-box; line-height: 1.4; }
+    #transitionBanner a { color: #fde047; text-decoration: underline; font-weight: 600; }
+    #transitionBanner a:hover { color: #fef9c3; }
+    @media (max-width: 720px) {
+      #transitionBanner { font-size: 12px; padding: 8px 10px; }
+    }
     header { padding: 16px 24px; border-bottom: 1px solid #1f2937; background: #0f172a; display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
     header .tagline { color: #cbd5e1; font-size: 12px; font-style: italic; opacity: 0.8; flex-shrink: 0; }
     .count:empty { display: none; }
@@ -152,7 +164,6 @@
       .modes { flex-wrap: wrap; }
       .modes button { padding: 4px 8px; font-size: 11px; }
       #creator { font-size: 11px; padding: 4px 6px; max-width: 140px; }
-      .submit-trigger { font-size: 11px; padding: 4px 8px; }
       .help-trigger { padding: 2px 4px; }
       .count { font-size: 10px; }
       /* Row layout: stack actions BELOW the head text on small screens */
@@ -243,9 +254,6 @@
       .ev-item .ev-play svg.lucide,
       .ev-item .ev-twitch [data-lucide],
       .ev-item .ev-twitch svg.lucide { width: 14px; height: 14px; }
-      /* Submit modal */
-      #submit .panel { padding: 16px; max-width: 100%; width: 100%; border-radius: 0; min-height: 100vh; box-sizing: border-box; }
-      #submit .row1 { flex-direction: column; gap: 6px; }
       /* Help modal */
       #help .panel { width: 92%; padding: 16px; }
       /* Landing card */
@@ -317,56 +325,6 @@
     .row { position: relative; }
     .row .head { padding-right: 56px; } /* leave room for micro buttons */
 
-    /* Bulk-download (⭐ saved tab) — toolbar above results + per-row select.
-       Hidden outside saved mode via #results[data-mode] gating, so the
-       checkbox markup can live in segRow once and just stay invisible
-       in transcript / events / VOD tabs. */
-    .bulk-bar { display: flex; align-items: center; gap: 10px; padding: 10px 14px; margin-bottom: 12px; background: linear-gradient(135deg, #0c1729 0%, #0f1c33 100%); border: 1px solid #334155; border-radius: 8px; flex-wrap: wrap; }
-    .bulk-bar .bulk-check-all { display: flex; align-items: center; gap: 6px; color: #cbd5e1; font-size: 12px; cursor: pointer; user-select: none; }
-    .bulk-bar .bulk-check-all input { accent-color: #38bdf8; cursor: pointer; }
-    .bulk-bar .bulk-count { color: #94a3b8; font-size: 11px; flex: 1; min-width: 80px; }
-    .bulk-bar button { background: #0c4a6e; color: #e0f2fe; border: 1px solid #075985; padding: 7px 12px; border-radius: 6px; font-size: 12px; cursor: pointer; font-family: inherit; display: inline-flex; gap: 6px; align-items: center; }
-    .bulk-bar button[hidden] { display: none; } /* beats the inline-flex above */
-    .bulk-bar button:hover { background: #0e7490; }
-    .bulk-bar button:disabled { opacity: .4; cursor: not-allowed; }
-    .bulk-bar button.primary { background: #047857; border-color: #059669; color: #d1fae5; font-weight: 600; }
-    .bulk-bar button.primary:hover { background: #059669; }
-    .bulk-bar button.danger { background: #7f1d1d; border-color: #991b1b; color: #fee2e2; }
-    .bulk-bar button.danger:hover { background: #991b1b; }
-    .bulk-bar .bulk-progress { color: #38bdf8; font-size: 11px; font-variant-numeric: tabular-nums; }
-    .bulk-bar .bulk-progress.err { color: #fca5a5; }
-    .bulk-bar .bulk-hint { color: #64748b; font-size: 10px; width: 100%; padding-top: 2px; }
-
-    /* Per-row checkbox — invisible until saved tab is active. */
-    .row .bulk-check-wrap { display: none; position: absolute; top: 10px; left: 10px; padding: 2px; cursor: pointer; z-index: 1; }
-    #results[data-mode="saved"] .row .bulk-check-wrap { display: flex; }
-    #results[data-mode="saved"] .row .head { padding-left: 28px; }
-    #results[data-mode="saved"] .row .head h3 { padding-left: 0; }
-    .row .bulk-check { accent-color: #38bdf8; cursor: pointer; width: 14px; height: 14px; margin: 0; }
-    .row.batch-selected { box-shadow: inset 3px 0 0 #38bdf8; }
-
-    /* Per-row batch-status pill — replaces the ✂ button while a batch is
-       running for that row, so users see exactly which clips are queued
-       vs rendering vs done. */
-    .row .cut-status { display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 4px; font-size: 12px; font-weight: 500; line-height: 1; }
-    .row .cut-status.queued { background: #1e293b; color: #94a3b8; border: 1px solid #334155; }
-    .row .cut-status.rendering { background: #0c4a6e; color: #bae6fd; border: 1px solid #0369a1; }
-    .row .cut-status.done { background: #064e3b; color: #bbf7d0; border: 1px solid #047857; }
-    .row .cut-status.failed { background: #7f1d1d; color: #fee2e2; border: 1px solid #991b1b; }
-
-    /* Per-row segment tweak controls — let the user nudge the cut range
-       in 0.5s steps before rendering. Saved-tab only so the search results
-       stay clean; the click handlers mutate data-pad-before/data-pad-after
-       on the cut button so both single-cut and bulk paths see the new
-       range without needing a separate state model. */
-    .row .seg-tweak { display: none; gap: 4px; align-items: center; padding: 6px 0 0; font-size: 11px; color: #94a3b8; flex-wrap: wrap; justify-content: flex-end; }
-    #results[data-mode="saved"] .row .seg-tweak { display: flex; }
-    .row .seg-tweak button { background: #1e293b; color: #cbd5e1; border: 1px solid #334155; padding: 3px 7px; font-size: 10px; border-radius: 3px; cursor: pointer; font-family: inherit; line-height: 1.2; }
-    .row .seg-tweak button:hover { background: #334155; color: #e0f2fe; border-color: #475569; }
-    .row .seg-tweak button.tweaked { background: #0c4a6e; color: #bae6fd; border-color: #0369a1; }
-    .row .seg-tweak .seg-range { color: #7dd3fc; font-variant-numeric: tabular-nums; padding: 0 6px; }
-    .row .seg-tweak .seg-reset { color: #64748b; }
-    .row .seg-tweak .seg-reset:hover { color: #fca5a5; }
     /* keyboard-focused row */
     .row.kfocus { outline: 2px solid #38bdf8; outline-offset: -1px; }
     /* VOD grouping cards */
@@ -470,8 +428,6 @@
     .vod-detail-empty { background: #131a3a; border: 1px solid #312e81; border-radius: 10px; padding: 32px; max-width: 560px; margin: 32px auto; text-align: center; }
     .vod-detail-empty .vd-title { color: #fde047; font-size: 16px; margin-bottom: 8px; }
     .vod-detail-empty .vd-help { color: #9ca3af; font-size: 13px; line-height: 1.5; }
-    /* Cut-failed inline note — replaces the "× retry" button after one failure */
-    .row .cut-failed { color: #6b7280; font-size: 11px; padding: 4px 8px; background: #1f1f1f; border: 1px dashed #374151; border-radius: 4px; font-style: italic; cursor: default; }
     .events-empty { padding: 32px 16px; text-align: center; color: #9ca3af; }
     .events-empty .ee-help { font-size: 12px; color: #6b7280; margin-top: 8px; }
     /* Rich empty-state — used when filters returned 0 hits. Lays out a
@@ -774,13 +730,6 @@
     .qwrap input { flex: 1; font-size: 17px; padding: 14px 44px 14px 18px; border-radius: 8px; }
     .qwrap input:focus { outline: 2px solid #38bdf8; outline-offset: 0; }
     .qwrap .qclear { right: 10px; font-size: 20px; }
-    /* URL-paste affordance */
-    .qpaste-hint { display: none; padding: 10px 14px; background: #131a3a; border: 1px solid #312e81; border-radius: 6px; margin: 8px 0 12px; font-size: 13px; color: #c7d2fe; align-items: center; gap: 12px; flex-wrap: wrap; }
-    .qpaste-hint.visible { display: flex; }
-    .qpaste-hint .qp-text { flex: 1; min-width: 0; }
-    .qpaste-hint .qp-text b { color: #fde047; }
-    .qpaste-hint button { background: #6441a5; color: #f3e8ff; border: 1px solid #7d5bbe; padding: 6px 14px; border-radius: 6px; cursor: pointer; font-family: inherit; font-size: 12px; }
-    .qpaste-hint button:hover { background: #7d5bbe; }
     /* Logged-in personalization — shown when twitch login matches a creator */
     .my-vods { background: linear-gradient(135deg, #0c1226 0%, #131a3a 100%); border: 1px solid #4338ca; border-radius: 10px; padding: 14px 18px; margin: 0 0 16px; }
     .my-vods .mv-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 10px; }
@@ -804,136 +753,17 @@
     header #userLogin { color: #c4b5fd; font-weight: 500; }
     header #logoutBtn { background: transparent; border: 0; color: #64748b; padding: 0 0 0 4px; font-size: 11px; cursor: pointer; font-family: inherit; }
     header #logoutBtn:hover { color: #fca5a5; }
-    /* ── "your VODs" ambient queue indicator ── */
-    #queuePill { display: none; position: relative; }
-    #queuePill.visible { display: inline-flex; align-items: center; }
-    #queuePillBtn { display: inline-flex; align-items: center; gap: 5px; background: #0c4a6e; border: 1px solid #0e7490; border-radius: 99px; padding: 3px 10px 3px 8px; font-size: 11px; color: #7dd3fc; cursor: pointer; font-family: inherit; transition: background .12s; }
-    #queuePillBtn:hover { background: #0e7490; }
-    #queuePillBtn .qpill-count { background: #38bdf8; color: #0c4a6e; font-weight: 700; border-radius: 99px; padding: 0 5px; font-size: 10px; line-height: 16px; min-width: 16px; text-align: center; }
-    #queuePopover { display: none; position: absolute; top: calc(100% + 6px); right: 0; min-width: 320px; max-width: 420px; background: #0f172a; border: 1px solid #334155; border-radius: 8px; box-shadow: 0 12px 36px rgba(0,0,0,.7); z-index: 200; padding: 12px 0 8px; }
-    #queuePopover.open { display: block; }
-    #queuePopover .qp-title { font-size: 11px; font-weight: 600; color: #94a3b8; letter-spacing: .07em; text-transform: uppercase; padding: 0 14px 8px; border-bottom: 1px solid #1f2937; margin-bottom: 4px; }
-    #queuePopover .qp-empty { color: #475569; font-size: 12px; padding: 8px 14px; }
-    #queuePopover .qp-job { display: flex; flex-direction: column; gap: 2px; padding: 7px 14px; border-radius: 0; transition: background .1s; }
-    #queuePopover .qp-job:hover { background: #131a3a; }
-    #queuePopover .qp-job-row { display: flex; align-items: center; gap: 8px; }
-    #queuePopover .qp-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
-    #queuePopover .qp-dot.queued { background: #94a3b8; }
-    #queuePopover .qp-dot.running { background: #38bdf8; animation: qpdot-pulse 1s ease-in-out infinite; }
-    #queuePopover .qp-dot.done { background: #6ee7b7; }
-    #queuePopover .qp-dot.failed { background: #fca5a5; }
-    #queuePopover .qp-dot.orphaned { background: #fde047; }
-    #queuePopover .qp-dot.cancelled { background: #475569; }
-    @keyframes qpdot-pulse { 0%,100%{opacity:1}50%{opacity:.4} }
-    #queuePopover .qp-name { font-size: 12px; color: #e0f2fe; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; }
-    #queuePopover .qp-status { font-size: 10px; font-variant-numeric: tabular-nums; color: #64748b; flex-shrink: 0; }
-    #queuePopover .qp-link { font-size: 11px; color: #38bdf8; text-decoration: none; padding: 0 14px; display: block; margin-top: 8px; border-top: 1px solid #1f2937; padding-top: 8px; }
-    #queuePopover .qp-link:hover { text-decoration: underline; }
-    #queueDismiss { position: fixed; inset: 0; z-index: 190; display: none; }
-    #queueDismiss.open { display: block; }
-    /* + submit a VOD */
-    .submit-trigger { background: #0c4a6e; border: 1px solid #075985; color: #e0f2fe; padding: 5px 10px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 500; font-family: inherit; }
-    .submit-trigger:hover { background: #0e7490; }
-    #submit { position: fixed; inset: 0; background: rgba(11,16,32,.92); z-index: 100; display: none; align-items: center; justify-content: center; }
-    #submit.open { display: flex; }
-    #submit .panel { background: #0f172a; border: 1px solid #334155; border-radius: 10px; padding: 24px 28px; max-width: 560px; width: 92%; box-shadow: 0 20px 60px rgba(0,0,0,.6); }
-    #submit h2 { margin: 0 0 8px; font-size: 16px; color: #7dd3fc; }
-    #submit .subtitle { color: #9ca3af; font-size: 12px; margin-bottom: 14px; line-height: 1.45; }
-    #submit .row1 { display: flex; gap: 8px; }
-    #submit input { flex: 1; min-width: 0; background: #1f2937; border: 1px solid #374151; color: #e5e7eb; padding: 8px 12px; border-radius: 6px; font-size: 13px; font-family: inherit; }
-    #submit input:focus { outline: 2px solid #38bdf8; outline-offset: -2px; }
-    #submit input:disabled { opacity: 0.6; }
-    #submit button.go { background: #0c4a6e; border: 1px solid #075985; color: #e0f2fe; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: 500; font-family: inherit; }
-    #submit button.go:hover:not(:disabled) { background: #0e7490; }
-    #submit button.go:disabled { opacity: 0.5; cursor: wait; }
-    #submit .sclose { float: right; cursor: pointer; color: #6b7280; background: transparent; border: 0; font-size: 18px; padding: 0 4px; min-width: 0; }
-    #submit .sclose:hover { color: #e5e7eb; }
-    #submit .progress { margin-top: 16px; padding: 12px 14px; background: #131a3a; border: 1px solid #312e81; border-radius: 6px; display: none; }
-    #submit .progress.show { display: block; }
-    #submit .progress .pstage { color: #c7d2fe; font-size: 13px; font-weight: 500; }
-    #submit .progress .pmeta { color: #9ca3af; font-size: 11px; margin-top: 4px; font-variant-numeric: tabular-nums; }
-    #submit .progress.err { background: #2a1414; border-color: #7f1d1d; }
-    #submit .progress.err .pstage { color: #fca5a5; }
-    #submit .progress.done { background: #052e1f; border-color: #047857; }
-    #submit .progress.done .pstage { color: #bbf7d0; }
-    #submit .progress a.deep { display: inline-block; margin-top: 8px; color: #e0f2fe; text-decoration: none; padding: 6px 12px; background: #0c4a6e; border: 1px solid #075985; border-radius: 4px; font-size: 12px; }
-    #submit .progress a.deep:hover { background: #0e7490; }
-    #submit .stagebar { display: flex; gap: 4px; margin-top: 8px; }
-    #submit .stagebar .pip { flex: 1; height: 4px; background: #1e293b; border-radius: 2px; }
-    #submit .stagebar .pip.active { background: #38bdf8; animation: spulse 1.4s ease-in-out infinite; }
-    #submit .stagebar .pip.past { background: #047857; }
-    @keyframes spulse { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
-
-    /* In-flight submission pill — sits in the topbar, persists across page
-       loads via localStorage, polls /api/submit_status until the job is
-       terminal. Click to expand details + jump to deep link when done. */
-    .inflight-pill { display: none; align-items: center; gap: 8px; padding: 4px 10px 4px 8px; background: linear-gradient(135deg, #1e293b 0%, #14213d 100%); border: 1px solid #38bdf8; border-radius: 999px; font-size: 11px; color: #c7d2fe; cursor: pointer; transition: all 0.15s; font-variant-numeric: tabular-nums; position: relative; }
-    .inflight-pill.visible { display: inline-flex; }
-    .inflight-pill:hover { border-color: #7dd3fc; background: #1e3a5f; color: #f0f9ff; }
-    .inflight-pill .ip-dot { width: 7px; height: 7px; border-radius: 50%; background: #38bdf8; box-shadow: 0 0 8px #38bdf8; animation: ipulse 1.6s ease-in-out infinite; flex: 0 0 auto; }
-    .inflight-pill .ip-dot.done { background: #10b981; box-shadow: 0 0 8px #10b981; animation: none; }
-    .inflight-pill .ip-dot.err { background: #ef4444; box-shadow: 0 0 8px #ef4444; animation: none; }
-    .inflight-pill .ip-stage { font-weight: 500; color: #e0f2fe; }
-    .inflight-pill .ip-pct { color: #94a3b8; }
-    .inflight-pill .ip-name { max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #94a3b8; }
-    @keyframes ipulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.6; transform: scale(0.85); } }
-    .inflight-popover { display: none; position: absolute; top: calc(100% + 6px); right: 0; min-width: 320px; max-width: 420px; background: #0f172a; border: 1px solid #312e81; border-radius: 8px; padding: 10px; box-shadow: 0 16px 48px rgba(0,0,0,0.6); z-index: 220; }
-    .inflight-popover.open { display: block; }
-    .inflight-popover .iph { font-size: 11px; color: #94a3b8; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.04em; }
-    .inflight-popover .iprow { padding: 8px 10px; background: #131a3a; border: 1px solid #1e293b; border-radius: 6px; margin-bottom: 6px; font-size: 12px; }
-    .inflight-popover .iprow:last-child { margin-bottom: 0; }
-    .inflight-popover .iprow .ipt { color: #e0f2fe; font-weight: 500; margin-bottom: 4px; word-break: break-all; }
-    .inflight-popover .iprow .ipm { color: #9ca3af; font-size: 11px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
-    .inflight-popover .iprow .ipm .pst { color: #fde047; }
-    .inflight-popover .iprow .ipm .pdone { color: #6ee7b7; }
-    .inflight-popover .iprow .ipm .perr  { color: #fca5a5; }
-    .inflight-popover .iprow a.ipdeep { display: inline-block; margin-top: 6px; color: #e0f2fe; text-decoration: none; padding: 4px 10px; background: #0c4a6e; border: 1px solid #075985; border-radius: 4px; font-size: 11px; }
-    .inflight-popover .iprow a.ipdeep:hover { background: #0e7490; }
-    .inflight-popover .ipdismiss { background: transparent; border: 0; color: #6b7280; cursor: pointer; padding: 0 4px; font-size: 14px; float: right; }
-    .inflight-popover .ipdismiss:hover { color: #f87171; }
-    /* qPasteHint takeover when the typed URL matches an in-flight submission */
-    .qpaste-hint.matched { background: #052e1f; border-color: #047857; color: #bbf7d0; }
-    .qpaste-hint.matched .qp-text b { color: #fde047; }
-    .qpaste-hint.matched button { background: #0c4a6e; border-color: #075985; color: #e0f2fe; }
-    .qpaste-hint.matched button:hover { background: #0e7490; }
   </style>
 </head>
 <body>
+<div id="transitionBanner" role="status">
+  This site is moving — try the new experience at
+  <a href="https://video.laughingwhales.com">video.laughingwhales.com</a>
+</div>
 <header>
   <h1>vtt — search</h1>
   <span class="tagline">search every word said on a Twitch stream</span>
   <span class="meta" id="genMeta">loading…</span>
-  <!-- Both pills live in a single cluster on the right of the topbar so the
-       auth widget never sits between them. inflight pill is anonymous-friendly
-       (localStorage-backed live progress on what you just submitted); queue
-       pill is auth-required (server-authoritative, all 20 recent submissions). -->
-  <div id="vodPills" style="display:flex;align-items:center;gap:8px;">
-    <div id="inflightWrap" style="position:relative;">
-      <button class="inflight-pill" id="inflightPill" type="button" aria-label="in-flight VOD submissions">
-        <span class="ip-dot" id="inflightDot"></span>
-        <span class="ip-stage" id="inflightStage">queued</span>
-        <span class="ip-pct" id="inflightPct"></span>
-        <span class="ip-name" id="inflightName"></span>
-      </button>
-      <div class="inflight-popover" id="inflightPopover">
-        <button class="ipdismiss" id="inflightDismissAll" title="clear completed">clear done</button>
-        <div class="iph">your submissions</div>
-        <div id="inflightList"></div>
-      </div>
-    </div>
-    <div id="queuePill">
-      <button id="queuePillBtn" title="your submitted VODs">
-        <i data-lucide="layers">⊞</i>
-        your VODs
-        <span class="qpill-count" id="queuePillCount">0</span>
-      </button>
-      <div id="queuePopover">
-        <div class="qp-title">your VODs</div>
-        <div id="queuePopoverBody"></div>
-      </div>
-    </div>
-    <div id="queueDismiss"></div>
-  </div>
   <div id="auth" class="auth-status">
     <button id="loginBtn" hidden>log in with twitch</button>
     <span id="userBadge" hidden>
@@ -945,14 +775,9 @@
 <main>
   <div class="controls">
     <div class="qwrap">
-      <input id="q" placeholder="search a phrase, paste a twitch VOD URL, or filter by creator…  ⌘K to focus" autofocus>
+      <input id="q" placeholder="search a phrase or filter by creator…  ⌘K to focus" autofocus>
       <button class="qclear" id="qclear" title="clear search (Esc)" aria-label="clear search">×</button>
       <div id="recent"></div>
-    </div>
-    <div class="qpaste-hint" id="qPasteHint" role="status">
-      <i data-lucide="link-2">🔗</i>
-      <span class="qp-text">that looks like a <b>Twitch VOD URL</b> — want to add it to the corpus?</span>
-      <button id="qPasteSubmit">+ submit this VOD</button>
     </div>
     <div class="modes" id="modes">
       <div class="modes-group">
@@ -968,36 +793,14 @@
     </div>
     <select id="creator"><option value="">all creators</option></select>
     <span class="count" id="count"></span>
-    <button class="submit-trigger" id="submitTrigger" title="paste a Twitch VOD URL to add it to the search corpus"><i data-lucide="plus">+</i> submit a VOD</button>
     <button class="help-trigger" id="helpTrigger" title="keyboard shortcuts (?)"><i data-lucide="help-circle">?</i></button>
   </div>
   <div class="event-chips" id="eventChips" hidden>
     <span class="chip-label">filter:</span>
   </div>
   <div id="results"><div class="loading">loading…</div></div>
-  <div class="pageNote" id="pageNote"><i data-lucide="play">▶</i> play here = embed inline · <i data-lucide="external-link">↗</i> open on twitch.tv = new tab · <i data-lucide="scissors">✂</i> cut &amp; download mp4 = render the segment now · <i data-lucide="clipboard">📋</i> copy timestamp ref = clipboard · <i data-lucide="star">⭐</i> star to save · <i data-lucide="link-2">🔗</i> share to deep link</div>
+  <div class="pageNote" id="pageNote"><i data-lucide="play">▶</i> play here = embed inline · <i data-lucide="external-link">↗</i> open on twitch.tv = new tab · <i data-lucide="clipboard">📋</i> copy timestamp ref = clipboard · <i data-lucide="star">⭐</i> star to save · <i data-lucide="link-2">🔗</i> share to deep link</div>
 </main>
-<div id="submit" role="dialog" aria-label="submit a VOD">
-  <div class="panel">
-    <button class="sclose" aria-label="close">✕</button>
-    <h2>submit a VOD</h2>
-    <div class="subtitle">
-      Paste a Twitch VOD link
-      (<code style="color:#fde047">https://www.twitch.tv/videos/&lt;id&gt;</code>)
-      or a vodvod.top link. We'll download, transcribe with Parakeet, and
-      make it searchable.
-    </div>
-    <div class="row1">
-      <input id="submitUrl" type="url" placeholder="https://www.twitch.tv/videos/2742590652" autocomplete="off" spellcheck="false">
-      <button class="go" id="submitGo">process</button>
-    </div>
-    <div class="progress" id="submitProgress">
-      <div class="pstage" id="submitStage"></div>
-      <div class="pmeta" id="submitMeta"></div>
-      <div class="stagebar" id="submitStagebar"></div>
-    </div>
-  </div>
-</div>
 <div id="help" role="dialog" aria-label="keyboard shortcuts">
   <div class="panel">
     <button class="hclose" aria-label="close">✕</button>
@@ -1011,7 +814,7 @@
       <dt>Enter / Space</dt><dd>open the focused row's player</dd>
       <dt>s</dt><dd>star / unstar the focused row</dd>
       <dt>l</dt><dd>copy a deep link to the focused row</dd>
-      <dt>1 · 2 · 3 · 4 · 5</dt><dd>switch to all · clips · vods · 🎯 events · ⭐ saved</dd>
+      <dt>1 · 2 · 3 · 4</dt><dd>switch to all · vods · 🎯 events · ⭐ saved</dd>
     </dl>
   </div>
 </div>
@@ -1101,7 +904,6 @@ const state = {
     try { return localStorage.getItem("vtt_event_view_v1") || "timeline"; }
     catch { return "timeline"; }
   })(),
-  failedCuts: new Set(),  // (creator/basename) keys whose cut failed this session — hide the button on re-render
   eventVotes: (() => {
     // Persist event-feedback votes in localStorage so the user's verdicts
     // survive reload + show pre-voted state on subsequent visits. Map key
@@ -1200,19 +1002,6 @@ function refreshIcons() {
 }
 window.addEventListener("load", refreshIcons);
 
-// Cut-failure tracking — once a (creator, basename) cut has failed, every
-// subsequent row that references the same source hides the button instead
-// of showing "× retry" repeatedly.
-function cutFailKey(creator, vodfile) {
-  return `${creator}/${String(vodfile).replace(/\.mp4$/, "")}`;
-}
-function markCutFailed(creator, vodfile) {
-  state.failedCuts.add(cutFailKey(creator, vodfile));
-}
-function cutWillFail(creator, vodfile) {
-  return state.failedCuts.has(cutFailKey(creator, vodfile));
-}
-
 // --- Deep-link VOD detail card --------------------------------------------
 // Surfaces ONE VOD when ?vod=<creator>/<basename> is in the URL — and now
 // also: this-VOD's events (mini timeline) + same-creator picks. Avoids the
@@ -1227,7 +1016,7 @@ async function renderVodDetailCard(creator, basename, t) {
     $("#results").innerHTML = `
       <div class="vod-detail-empty">
         <div class="vd-title">VOD not found in the public index</div>
-        <div class="vd-help">${escape(creator)}/${escape(basename)} isn't published yet, or the basename isn't quite right. Try the +submit a VOD button or search by phrase instead.</div>
+        <div class="vd-help">${escape(creator)}/${escape(basename)} isn't published yet, or the basename isn't quite right. Try searching by phrase instead.</div>
       </div>`;
     $("#count").textContent = "0 hits";
     return;
@@ -1297,15 +1086,20 @@ async function renderVodDetailCard(creator, basename, t) {
     const eventBox = document.getElementById("vdEvents");
     if (!eventBox) return;
     if (!events.length) {
-      // No xcorr / event sidecars exist for this VOD yet. Show the
-      // empty-state card with the "kick off a scan" CTA wired to
-      // /api/scan/queue. Auth-gated; on success the card swaps into
-      // a polling-progress view and re-renders this whole VOD detail
-      // when the job completes (events are mirrored to R2 inside the
-      // xcorr_jobs worker, so the post-scan re-fetch picks them up).
-      eventBox.innerHTML = renderVodNoEventsPanel(v);
+      // No xcorr / event sidecars exist for this VOD yet. Show a quiet
+      // explainer instead of a CTA — scan kick-off lives on the new site.
+      eventBox.innerHTML = `
+        <div class="ne-card" data-creator="${escape(v.c)}" data-basename="${escape(v.b)}">
+          <div class="ne-stripe"></div>
+          <div class="ne-body">
+            <div class="ne-eyebrow">in-game audio events</div>
+            <div class="ne-title">no events scanned yet</div>
+            <p class="ne-lede">
+              This VOD hasn't been processed by the audio-event scanner yet.
+            </p>
+          </div>
+        </div>`;
       refreshIcons();
-      attachScanKickHandlers(v);
       return;
     }
     eventBox.innerHTML = renderVodTimelineCard({
@@ -1315,244 +1109,6 @@ async function renderVodDetailCard(creator, basename, t) {
     });
     attachTimelineHandlers();
     refreshIcons();
-  });
-}
-
-function renderVodNoEventsPanel(v) {
-  // Surfaced under the VOD detail card when no xc_*.json sidecars exist.
-  // The button is always rendered "ready" — the auth check happens at
-  // click-time so that a /api/auth/me round-trip racing the initial
-  // render doesn't leave the button stuck in a "log in" state for
-  // already-authed users (which is exactly what happened pre-fix:
-  // bootFromUrl rendered the panel before refreshAuth populated
-  // state.session, so the gate read false-anon).
-  return `
-    <div class="ne-card" data-creator="${escape(v.c)}" data-basename="${escape(v.b)}">
-      <div class="ne-stripe"></div>
-      <div class="ne-body">
-        <div class="ne-eyebrow">in-game audio events</div>
-        <div class="ne-title">no events scanned yet</div>
-        <p class="ne-lede">
-          Once we run the audio-event scanner on this VOD you'll see a
-          color-coded timeline of every match start, gen pop, survivor hook
-          and match end — click any tick to jump straight to that moment
-          on Twitch.
-        </p>
-        <div class="ne-classes">
-          <span class="ne-cls" style="--c:#10b981">match start</span>
-          <span class="ne-cls" style="--c:#ef4444">match end</span>
-          <span class="ne-cls" style="--c:#fbbf24">gen popped</span>
-          <span class="ne-cls" style="--c:#a78bfa">survivor on hook</span>
-          <span class="ne-cls" style="--c:#fb923c">match queued</span>
-        </div>
-        <div class="ne-actions">
-          <button class="ne-cta ne-scan-btn" type="button">
-            <i data-lucide="zap">⚡</i> kick off a scan
-          </button>
-          <span class="ne-cta-note">Runs locally in ~5 min per 5 h VOD · publishes back here when done.</span>
-        </div>
-        <div class="ne-progress" hidden>
-          <div class="ne-progress-bar"><div class="ne-progress-fill"></div></div>
-          <div class="ne-progress-msg"></div>
-        </div>
-      </div>
-    </div>`;
-}
-
-// Wire the scan-kick button on the VOD detail card. Click → POST
-// /api/scan/queue, then poll /api/scan/status?job_id=<id> on a 4s
-// cadence until the job lands in done/error/cancelled. Renders inline
-// progress so the user knows it's running. On done, re-fetches the
-// VOD's events index entry and re-renders the timeline strip in place.
-//
-// 409 vod_audio_missing (chainable:true): swap card to a "queue download + scan"
-//   confirmation state. User clicks → POST /api/scan/download_and_queue then
-//   polls the returned chain job_id with the same poller.
-// 410 vod_audio_unrecoverable: show a dead-end state (no retry button).
-function attachScanKickHandlers(v) {
-  const card = document.querySelector(".ne-card");
-  if (!card) return;
-  const btn = card.querySelector(".ne-scan-btn");
-  const note = card.querySelector(".ne-cta-note");
-  const progress = card.querySelector(".ne-progress");
-  const progFill = card.querySelector(".ne-progress-fill");
-  const progMsg = card.querySelector(".ne-progress-msg");
-  if (!btn) return;
-  let pollTimer = null;
-
-  function setRunning(stage, msg) {
-    btn.disabled = true;
-    // Label the button by stage so the user knows which phase we're in.
-    const stageLabel =
-      stage === "downloading" ? "downloading VOD" :
-      stage === "scanning"    ? "scan in progress" :
-      "in progress";
-    btn.innerHTML = `<i data-lucide="loader">⏳</i> ${stageLabel}`;
-    refreshIcons();
-    progress.hidden = false;
-    if (note) note.textContent = stage || "starting";
-    if (progMsg) progMsg.textContent = msg || "";
-    progFill.classList.add("indeterminate");
-  }
-  function setError(msg) {
-    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
-    btn.disabled = false;
-    btn.innerHTML = `<i data-lucide="rotate-ccw">↻</i> retry scan`;
-    refreshIcons();
-    if (note) { note.textContent = msg || "scan failed"; note.style.color = "var(--bad)"; }
-    progress.hidden = true;
-  }
-  function setDeadEnd() {
-    // VOD unrecoverable — never had a vodvod URL.
-    if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
-    btn.disabled = true;
-    btn.style.display = "none";
-    if (note) {
-      note.innerHTML =
-        `<span style="color:var(--ink-2)">` +
-        `This VOD's source isn't recoverable — it was indexed before R2 mirroring ` +
-        `went in and is no longer on Twitch. Try a different VOD from the list below.` +
-        `</span>`;
-    }
-    progress.hidden = true;
-  }
-
-  // Show the "queue download + scan" confirmation UI and wire the confirm button.
-  function offerChainDownload() {
-    if (note) {
-      note.innerHTML =
-        `Audio for this VOD isn't on the server. Queueing will re-download it ` +
-        `(~5–10 min) then run the scan (~5 min). ` +
-        `<button class="ne-chain-confirm-btn" type="button" ` +
-        `style="margin-left:8px;padding:2px 10px;border-radius:4px;` +
-        `background:var(--accent-soft);border:1px solid var(--accent);` +
-        `color:var(--accent);cursor:pointer;font-size:0.85rem;">` +
-        `queue download + scan` +
-        `</button>`;
-    }
-    btn.disabled = true;
-    btn.innerHTML = `<i data-lucide="download">↓</i> audio missing`;
-    refreshIcons();
-
-    const confirmBtn = card.querySelector(".ne-chain-confirm-btn");
-    if (!confirmBtn) return;
-    confirmBtn.addEventListener("click", async (ev) => {
-      ev.preventDefault();
-      confirmBtn.disabled = true;
-      confirmBtn.textContent = "queueing…";
-      try {
-        const r = await fetch("/api/scan/download_and_queue", {
-          method: "POST",
-          credentials: "same-origin",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify({ creator: v.c, basename: v.b }),
-        });
-        if (r.status === 401) {
-          const ret = location.pathname + location.search;
-          location.href = "/api/auth/login?returnTo=" + encodeURIComponent(ret);
-          return;
-        }
-        const d = await r.json().catch(() => ({}));
-        if (!r.ok || !d.ok || !d.job_id) {
-          setError(d.error || `HTTP ${r.status}`);
-          return;
-        }
-        if (d.deduped) {
-          toast("already running — tracking existing job");
-        } else {
-          toast("download + scan queued ⚡");
-        }
-        setRunning("downloading", "queued");
-        pollStatus(d.job_id);
-      } catch (e) {
-        setError(String(e.message || e));
-      }
-    });
-  }
-
-  async function pollStatus(jobId) {
-    try {
-      const r = await fetch(`/api/scan/status?job_id=${encodeURIComponent(jobId)}`);
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      const d = await r.json();
-      // progress.stage flipping (downloading → scanning → done) mid-poll is
-      // handled naturally: setRunning reads the current stage each call, so
-      // the label updates without any extra state machine.
-      const stage = d.progress?.stage || d.state || "queued";
-      const msg = d.progress?.msg || "";
-      setRunning(stage, msg);
-      if (d.state === "done") {
-        if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
-        btn.innerHTML = `<i data-lucide="check">✓</i> scan complete — refreshing`;
-        refreshIcons();
-        progFill.classList.remove("indeterminate");
-        progFill.style.width = "100%";
-        // Re-fetch this VOD's events and re-render the detail card so the
-        // user sees their freshly-scanned timeline without a hard reload.
-        setTimeout(() => renderVodDetailCard(v.c, v.b, null), 800);
-        return;
-      }
-      if (d.state === "failed" || d.state === "cancelled") {
-        setError(d.error || `scan ${d.state}`);
-        return;
-      }
-      pollTimer = setTimeout(() => pollStatus(jobId), 4000);
-    } catch (e) {
-      // Transient — back off and retry once before surfacing.
-      pollTimer = setTimeout(() => pollStatus(jobId), 8000);
-    }
-  }
-
-  btn.addEventListener("click", async (ev) => {
-    ev.preventDefault();
-    btn.disabled = true;
-    btn.innerHTML = `<i data-lucide="loader">⏳</i> queueing…`;
-    refreshIcons();
-    try {
-      const r = await fetch("/api/scan/queue", {
-        method: "POST",
-        credentials: "same-origin",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ creator: v.c, basename: v.b }),
-      });
-      if (r.status === 401) {
-        // Backend gate fired — authoritative signal regardless of what
-        // state.session looks like in the SPA. Bounce through the OAuth
-        // round-trip and return to this exact deep link.
-        const ret = location.pathname + location.search;
-        location.href = "/api/auth/login?returnTo=" + encodeURIComponent(ret);
-        return;
-      }
-      if (r.status === 409) {
-        // Audio missing but recoverable via vodvod — offer the chain CTA.
-        const d = await r.json().catch(() => ({}));
-        if (d.error === "vod_audio_missing" && d.chainable) {
-          offerChainDownload();
-          return;
-        }
-        setError(d.error || "audio missing");
-        return;
-      }
-      if (r.status === 410) {
-        // Audio unrecoverable — dead end.
-        setDeadEnd();
-        return;
-      }
-      const d = await r.json().catch(() => ({}));
-      if (!r.ok || !d.ok || !d.job_id) {
-        setError(d.error || `HTTP ${r.status}`);
-        return;
-      }
-      if (d.deduped) {
-        toast("already running — tracking existing job");
-      } else {
-        toast("scan queued ⚡");
-      }
-      setRunning("queued", "");
-      pollStatus(d.job_id);
-    } catch (e) {
-      setError(String(e.message || e));
-    }
   });
 }
 
@@ -1708,9 +1264,7 @@ const ROADMAP = {
   shipped: [
     ["full-corpus search", "193k transcript segments across 11 streamers"],
     ["▶ play here · inline twitch player", "watch any moment without leaving the page"],
-    ["✂ cut & download mp4", "render a clean clip without first downloading the source VOD"],
     ["⌘K · j/k nav · ⭐ saves · 🔗 share", "keyboard-friendly, deep-linkable, shareable"],
-    ["+ submit a VOD", "paste a Twitch URL → it gets transcribed + scanned + published"],
     ["log in with Twitch", "one identity across the laughingwhales family"],
     ["🎯 event search", "find specific in-game DBD moments — match start/end, gen popped, survivor on hook"],
     ["docked twitch player", "playback panel anchors above the active VOD's timeline (or list-view group) instead of floating bottom-right"],
@@ -1720,17 +1274,11 @@ const ROADMAP = {
     ["player is always docked", "no more bottom-right floating panel — the twitch player anchors inside the active row's container in every mode"],
     ["editorial type system", "Sora display + JetBrains Mono data — VOD cards / accordions / event rows redesigned as a scannable track listing instead of a generic dashboard"],
     ["no-events panel", "VODs without an event scan get a clean explainer card with future paywall hook (kick off scan) instead of looking half-rendered"],
-    ["⚡ kick off a scan", "auth-gated button on no-events VODs queues the xcorr scan on the backend; UI polls and auto-refreshes when the timeline lands"],
     ["✓ confirmed events stick around", "👍 votes get a green stripe + ✓ on the timestamp + a per-VOD “you confirmed N” pill that survives reload"],
     ["smart events-mode empty state", "when filters wipe out all hits, see active filters as ✕ chips + cross-mode CTAs (“search transcripts for X across CREATOR” / “see all events from CREATOR”)"],
     ["deep links survive every render", "?vod=...&t=... preserved as the player moves, every play action updates the share URL"],
     ["xcorr scans stream from R2", "scanner reads audio directly from object storage — no local-cache pull required for one-shot scans"],
     ["disk auto-eviction", "every download upload also evicts oldest local VODs to keep ≥50 GB free; R2 backstops every read"],
-    ["in-flight submission pill", "topbar pill + qPasteHint takeover so a re-paste of an in-progress URL shows live status (downloading/transcribing/% done) instead of letting you queue a duplicate"],
-    ["submitter notifications", "your submissions are tagged with your account — close the tab safely and see live status in the 'your VODs' topbar pill on next visit"],
-    ["job-state persistence", "serve.py restarts no longer drop in-flight job history; jobs.jsonl write-through + orphan detection on boot rehydrate"],
-    ["auto-scan after transcribe", "public VOD submissions automatically chain xcorr event scan after transcription so the events lane is populated end-to-end"],
-    ["⬇ batch-download saved clips", "⭐ saved tab now has per-row checkboxes + a 'download all' button that fans out 3 cuts in parallel and downloads each mp4 the moment it's ready — grab a video-edit-ready batch in one click"],
   ],
   next: [
     ["named cloudflared tunnel", "stable hostname between Pages and serve.py — no more 502 window when serve.py restarts"],
@@ -1793,8 +1341,8 @@ function roadmapHTML(meta) {
       </div>
 
       <div class="cta">
-        <span class="label">have a Twitch VOD that isn't in the corpus yet?</span>
-        <button id="landingSubmitBtn"><i data-lucide="plus">+</i> submit a VOD</button>
+        <span class="label">looking for the new experience?</span>
+        <a href="https://video.laughingwhales.com">visit video.laughingwhales.com</a>
         <a href="https://laughingwhales.com" target="_blank" rel="noopener">about laughingwhales</a>
       </div>
 
@@ -1887,15 +1435,6 @@ function renderLanding() {
       runSearch();
     });
   });
-
-  // Wire the "submit a VOD" CTA in the landing card to the existing modal.
-  const lsb = document.getElementById("landingSubmitBtn");
-  if (lsb) {
-    lsb.addEventListener("click", () => {
-      if (typeof openSubmit === "function") openSubmit();
-      else document.getElementById("submitTrigger")?.click();
-    });
-  }
 
 }
 function highlight(text, tokens) {
@@ -2103,23 +1642,7 @@ function renderSaved(creator) {
     return;
   }
   state.lastHits = filtered;
-  // Bulk-download toolbar — renders only inside the saved tab so the
-  // per-row checkboxes (always present in segRow markup, hidden via
-  // [data-mode="saved"] CSS) become visible alongside their controller.
-  const apiOk = !!RENDER_API;
-  const bar = `
-    <div class="bulk-bar" id="bulkBar">
-      <label class="bulk-check-all" title="select / deselect every saved hit">
-        <input type="checkbox" id="bulkCheckAll"> all
-      </label>
-      <span class="bulk-count">${filtered.length} starred${apiOk ? "" : " · <span style='color:#fca5a5;'>render API offline</span>"}</span>
-      <button id="bulkSel" disabled>⬇ download selected</button>
-      <button id="bulkAll" class="primary"${apiOk ? "" : " disabled"}>⬇ download all (${filtered.length})</button>
-      <button id="bulkCancel" class="danger" hidden>✕ cancel</button>
-      <span class="bulk-progress" id="bulkProgress"></span>
-      <span class="bulk-hint">batch renders 3 in parallel · 50/batch cap · each clip downloads as it finishes</span>
-    </div>`;
-  $("#results").innerHTML = bar + filtered.map((h) => h.kind === "clip"
+  $("#results").innerHTML = filtered.map((h) => h.kind === "clip"
     ? clipRow(h.rec, [])
     // Pass the original hit through so segRow's data-key matches the
     // starred-Map key for event-kind entries (otherwise the star icon
@@ -2127,7 +1650,6 @@ function renderSaved(creator) {
     : segRow(h.rec, [], { hit: h })).join("");
   $("#results").dataset.mode = "saved";
   attachRowHandlers();
-  attachBulkBarHandlers();
   state.focusIdx = -1;
 }
 
@@ -2907,59 +2429,6 @@ function attachRowHandlers() {
       togglePlayer(el);
     });
   });
-  $$("[data-cut]").forEach((btn) => {
-    btn.addEventListener("click", () => onSegmentCut(btn));
-  });
-  // Saved-tab segment tweak controls — nudge the cut range without
-  // re-rendering the row, so subsequent ✂ cut or bulk-download picks up
-  // the user's adjusted pads. Mutates data-pad-before / data-pad-after
-  // on the row's [data-cut] button (the same fields payloadFromCutBtn
-  // reads), then refreshes the visible range readout.
-  $$(".seg-tweak [data-tweak]").forEach((btn) => {
-    btn.addEventListener("click", (ev) => {
-      ev.stopPropagation();
-      const row = btn.closest(".row");
-      if (!row) return;
-      const cutBtn = row.querySelector("[data-cut]");
-      if (!cutBtn) return;
-      const action = btn.dataset.tweak;
-      const step = 0.5;
-      const start = parseFloat(cutBtn.dataset.start);
-      const end = parseFloat(cutBtn.dataset.end);
-      let padBefore = parseFloat(cutBtn.dataset.padBefore || "2");
-      let padAfter = parseFloat(cutBtn.dataset.padAfter || "1");
-      if (action === "reset") {
-        padBefore = 2; padAfter = 1;
-      } else {
-        let nb = padBefore, na = padAfter;
-        if (action === "start-earlier") nb += step;
-        else if (action === "start-later") nb -= step;
-        else if (action === "end-earlier") na -= step;
-        else if (action === "end-later") na += step;
-        const effStart = Math.max(0, start - nb);
-        const effEnd = end + na;
-        if (effEnd - effStart < 0.5) {
-          toast("min cut length 0.5s — can't shrink further");
-          return;
-        }
-        padBefore = nb; padAfter = na;
-      }
-      cutBtn.dataset.padBefore = padBefore.toFixed(1);
-      cutBtn.dataset.padAfter = padAfter.toFixed(1);
-      const effStart = Math.max(0, start - padBefore);
-      const effEnd = end + padAfter;
-      const effDur = effEnd - effStart;
-      const range = row.querySelector("[data-seg-range]");
-      if (range) range.textContent = `${effDur.toFixed(1)}s · ${fmtT(effStart)}–${fmtT(effEnd)}`;
-      cutBtn.title = `cut a clean ${effDur.toFixed(1)}s mp4 from the source VOD and download it`;
-      // Mark every nudge button on this row as "tweaked" so the row visibly
-      // signals that it's been modified from defaults (highlight reverts on
-      // ↺ reset since padBefore/padAfter snap back to 2/1).
-      const isDefault = padBefore === 2 && padAfter === 1;
-      row.querySelectorAll(".seg-tweak [data-tweak]:not(.seg-reset)").forEach(b =>
-        b.classList.toggle("tweaked", !isDefault));
-    });
-  });
   $$("[data-twitch]").forEach((btn) => {
     btn.addEventListener("click", (ev) => { ev.stopPropagation(); togglePlayer(btn.closest(".vod-row")); });
   });
@@ -3397,284 +2866,6 @@ function togglePlayer(el) {
   if (v) v.play().catch(() => {});
 }
 
-// Build a cut payload from a [data-cut] button's dataset. Returns null
-// for non-cuttable rows (event-mode entries lacking d, anything where
-// the math goes non-finite). Shared between single-row and bulk paths.
-function payloadFromCutBtn(btn) {
-  const ds = btn.dataset;
-  const start = parseFloat(ds.start) - parseFloat(ds.padBefore || 0);
-  const end = parseFloat(ds.end) + parseFloat(ds.padAfter || 0);
-  if (!isFinite(start) || !isFinite(end) || end <= start) return null;
-  const title = (ds.title || "segment").slice(0, 80);
-  return {
-    creator: ds.creator,
-    vod_file: ds.vodfile,
-    start: Math.max(0, start),
-    end,
-    title,
-    text: title,
-  };
-}
-
-// Network-only cut. Returns { id, url } on success, throws on failure.
-// Used by both the single-row click handler and the bulk runner.
-async function cutSegmentRequest(payload) {
-  if (!RENDER_API) throw new Error("render API offline");
-  const r = await fetch(`${RENDER_API}/api/clip`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
-  if (!r.ok) {
-    const err = await r.text().catch(() => `HTTP ${r.status}`);
-    throw new Error(err.slice(0, 120));
-  }
-  const body = await r.json();
-  const clip = body.clip;
-  if (!clip || !clip.id) throw new Error("no clip in response");
-  // Same-origin proxy so <a download> actually downloads instead of opening
-  // the mp4 in a browser tab — Chrome ignores `download` on cross-origin
-  // anchors, and R2 doesn't ship Content-Disposition. Pages Function at
-  // /api/dl/<id>.mp4 streams from R2 with the right header.
-  const fname = encodeURIComponent((clip.title || clip.id).slice(0, 80));
-  return {
-    id: clip.id,
-    url: `/api/dl/${encodeURIComponent(clip.id)}.mp4?n=${fname}`,
-    publicUrl: `${PUBLIC_BASE}/clips/${clip.id}.mp4`,
-  };
-}
-
-async function onSegmentCut(btn) {
-  if (!RENDER_API) {
-    btn.textContent = "no api configured";
-    return;
-  }
-  const payload = payloadFromCutBtn(btn);
-  if (!payload) {
-    btn.textContent = "cut unavailable";
-    btn.disabled = true;
-    return;
-  }
-  btn.disabled = true;
-  btn.textContent = "rendering mp4…";
-  const actions = btn.parentElement;
-  try {
-    const { url: dlUrl } = await cutSegmentRequest(payload);
-    btn.textContent = "✓ rendered — downloading…";
-    btn.style.background = "#064e3b";
-    const a = document.createElement("a");
-    a.className = "primary"; a.href = dlUrl; a.download = "";
-    a.textContent = "⬇ download again";
-    a.title = "the file already started downloading; click to grab it again";
-    a.style.marginTop = "4px";
-    actions.appendChild(a);
-    setTimeout(() => a.click(), 200);
-  } catch (e) {
-    // Mark this VOD as un-cuttable for the rest of the session and replace
-    // the button with a disabled inline note. No retry button — the same
-    // backend with the same source isn't going to start working between
-    // clicks. Refresh-to-retry stays available; the failure clears on reload.
-    markCutFailed(btn.dataset.creator, btn.dataset.vodfile);
-    const note = document.createElement("span");
-    note.className = "cut-failed";
-    note.title = String(e);
-    note.textContent = "⚠ cut unavailable";
-    btn.replaceWith(note);
-  }
-}
-
-// ── Bulk download (saved tab) -----------------------------------------------
-// Concurrency-capped fan-out of /api/clip calls. Each clip auto-downloads
-// as soon as it returns; download triggers are staggered so the browser
-// doesn't queue 50 anchor-clicks back-to-back (Chrome will start blocking
-// after ~10 rapid downloads from the same origin).
-
-const bulk = {
-  running: false,
-  cancel: false,
-  cap: 50,
-  concurrency: 3,
-  staggerMs: 350,
-};
-
-function bulkRows() {
-  // Saved-tab rows that have a working cut button. Cut-failed rows skip
-  // automatically because their [data-cut] was already replaced by a
-  // <span class="cut-failed"> in onSegmentCut.
-  const out = [];
-  $$("#results .row[data-key]").forEach((row) => {
-    const btn = row.querySelector("[data-cut]");
-    if (!btn) return;
-    const payload = payloadFromCutBtn(btn);
-    if (!payload) return;
-    out.push({ row, btn, payload, key: row.dataset.key });
-  });
-  return out;
-}
-
-function bulkSelected() {
-  return bulkRows().filter((r) => {
-    const cb = r.row.querySelector(".bulk-check");
-    return cb && cb.checked;
-  });
-}
-
-function setBulkRowStatus(row, status, opts) {
-  // status: queued | rendering | done | failed | reset
-  opts = opts || {};
-  const actions = row.querySelector(".actions");
-  if (!actions) return;
-  let pill = actions.querySelector(".cut-status");
-  const cutBtn = actions.querySelector("[data-cut]");
-  const tweakBox = actions.querySelector(".seg-tweak");
-  if (status === "reset") {
-    if (pill) pill.remove();
-    if (cutBtn) cutBtn.style.display = "";
-    if (tweakBox) tweakBox.style.display = "";
-    return;
-  }
-  if (!pill) {
-    pill = document.createElement("span");
-    actions.insertBefore(pill, actions.firstChild);
-  }
-  if (cutBtn) cutBtn.style.display = "none";
-  if (tweakBox) tweakBox.style.display = "none";
-  pill.className = `cut-status ${status}`;
-  pill.textContent = ({
-    queued: "queued",
-    rendering: "rendering…",
-    done: "✓ downloaded",
-    failed: "⚠ failed",
-  })[status] || status;
-  // Surface the cut error as a tooltip on the failed pill so users can tell
-  // an audio-only-ingest VOD apart from a transient GPU-busy failure.
-  if (status === "failed" && opts.error) pill.title = String(opts.error).slice(0, 200);
-}
-
-async function bulkDownloadRun(items) {
-  if (!items.length) { toast("nothing to download"); return; }
-  if (bulk.running) { toast("a batch is already running"); return; }
-  if (items.length > bulk.cap) {
-    if (!confirm(`This will render ${items.length} clips. The cap is ${bulk.cap} per batch — only the first ${bulk.cap} will run.`)) return;
-    items = items.slice(0, bulk.cap);
-  }
-  bulk.running = true; bulk.cancel = false;
-
-  for (const it of items) setBulkRowStatus(it.row, "queued");
-
-  const total = items.length;
-  let done = 0, failed = 0;
-  const progressEl = $("#bulkProgress");
-  const allBtn = $("#bulkAll");
-  const selBtn = $("#bulkSel");
-  const cancelBtn = $("#bulkCancel");
-  const checkAll = $("#bulkCheckAll");
-  if (allBtn) allBtn.disabled = true;
-  if (selBtn) selBtn.disabled = true;
-  if (checkAll) checkAll.disabled = true;
-  if (cancelBtn) cancelBtn.hidden = false;
-
-  const update = () => {
-    if (!progressEl) return;
-    progressEl.textContent = `${done}/${total} done${failed ? ` · ${failed} failed` : ""}${bulk.cancel ? " · cancelling…" : ""}`;
-    progressEl.classList.toggle("err", failed > 0);
-  };
-  update();
-
-  // Stagger download triggers so Chrome doesn't queue rapid anchor-clicks.
-  let lastDownloadAt = 0;
-  async function triggerDownload(url, suggestedName) {
-    const wait = Math.max(0, lastDownloadAt + bulk.staggerMs - Date.now());
-    if (wait) await new Promise((r) => setTimeout(r, wait));
-    lastDownloadAt = Date.now();
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = suggestedName || "";
-    a.style.display = "none";
-    document.body.appendChild(a);
-    a.click();
-    setTimeout(() => a.remove(), 1500);
-  }
-
-  const queue = items.slice();
-  const worker = async () => {
-    while (queue.length) {
-      if (bulk.cancel) return;
-      const it = queue.shift();
-      setBulkRowStatus(it.row, "rendering");
-      try {
-        const { url } = await cutSegmentRequest(it.payload);
-        await triggerDownload(url);
-        setBulkRowStatus(it.row, "done");
-        done++;
-      } catch (e) {
-        console.warn("[bulk] cut failed", it.payload, e);
-        setBulkRowStatus(it.row, "failed", { error: e?.message || e });
-        failed++;
-      }
-      update();
-    }
-  };
-  const pool = [];
-  for (let i = 0; i < Math.min(bulk.concurrency, items.length); i++) pool.push(worker());
-  await Promise.all(pool);
-
-  bulk.running = false;
-  if (allBtn) allBtn.disabled = false;
-  if (selBtn) selBtn.disabled = bulkSelected().length === 0;
-  if (checkAll) checkAll.disabled = false;
-  if (cancelBtn) cancelBtn.hidden = true;
-  toast(failed ? `${done} downloaded · ${failed} failed` : `${done} downloaded ★`);
-}
-
-function attachBulkBarHandlers() {
-  const bar = $("#bulkBar");
-  if (!bar) return;
-  const checkAll = $("#bulkCheckAll");
-  const selBtn = $("#bulkSel");
-  const allBtn = $("#bulkAll");
-  const cancelBtn = $("#bulkCancel");
-
-  const updateSelCount = () => {
-    const sel = bulkSelected().length;
-    if (selBtn) {
-      selBtn.disabled = sel === 0 || bulk.running;
-      selBtn.textContent = sel ? `⬇ download selected (${sel})` : "⬇ download selected";
-    }
-    if (checkAll) {
-      const rows = bulkRows();
-      checkAll.checked = rows.length > 0 && sel === rows.length;
-      checkAll.indeterminate = sel > 0 && sel < rows.length;
-    }
-  };
-
-  $$("#results .bulk-check").forEach((cb) => {
-    cb.addEventListener("change", () => {
-      cb.closest(".row").classList.toggle("batch-selected", cb.checked);
-      updateSelCount();
-    });
-    cb.addEventListener("click", (ev) => ev.stopPropagation());
-  });
-
-  if (checkAll) {
-    checkAll.addEventListener("change", () => {
-      const want = checkAll.checked;
-      $$("#results .bulk-check").forEach((cb) => {
-        cb.checked = want;
-        cb.closest(".row").classList.toggle("batch-selected", want);
-      });
-      updateSelCount();
-    });
-  }
-  if (allBtn) allBtn.addEventListener("click", () => bulkDownloadRun(bulkRows()));
-  if (selBtn) selBtn.addEventListener("click", () => bulkDownloadRun(bulkSelected()));
-  if (cancelBtn) cancelBtn.addEventListener("click", () => {
-    bulk.cancel = true;
-    toast("cancelling… in-flight cuts will finish");
-  });
-  updateSelCount();
-}
-
 function microButtons(h) {
   const starred = isStarred(h);
   // List-view event rows also need 👍 / 👎 — same affordance as the
@@ -3771,7 +2962,6 @@ function segRow(s, tokens, opts) {
   const h = hitOverride || { kind: "vod", rec: s };
   return `
     <div class="row vod vod-row" data-key="${escape(hitKey(h))}">
-      <label class="bulk-check-wrap" title="select for batch download"><input type="checkbox" class="bulk-check"></label>
       ${microButtons(h)}
       <div class="head">
         <div>
@@ -3782,25 +2972,6 @@ function segRow(s, tokens, opts) {
         </div>
         <div class="actions">
           ${tvActions}
-          ${cutWillFail(s.c, s.b + ".mp4")
-            ? `<span class="cut-failed" title="a previous cut from this VOD failed — refresh the page to retry">⚠ cut unavailable</span>`
-            : `<button data-cut="1"
-                  data-creator="${escape(s.c)}"
-                  data-vodfile="${escape(s.b)}.mp4"
-                  data-start="${s.t}"
-                  data-end="${((+s.t || 0) + (+s.d || 0)).toFixed(2)}"
-                  data-pad-before="${padBefore}"
-                  data-pad-after="${padAfter}"
-                  data-title="${escape(cutTitle)}"
-                  title="cut a clean ${((+s.d || 0) + padBefore + padAfter).toFixed(1)}s mp4 from the source VOD and download it"><i data-lucide="scissors">✂</i> cut &amp; download mp4</button>
-              <div class="seg-tweak">
-                <button data-tweak="start-earlier" title="start 0.5s earlier (extend before)">⏪ start</button>
-                <button data-tweak="start-later" title="start 0.5s later (trim before)">start ⏩</button>
-                <span class="seg-range" data-seg-range>${((+s.d || 0) + padBefore + padAfter).toFixed(1)}s · ${fmtT(Math.max(0, (+s.t || 0) - padBefore))}–${fmtT((+s.t || 0) + (+s.d || 0) + padAfter)}</span>
-                <button data-tweak="end-earlier" title="end 0.5s earlier (trim after)">⏪ end</button>
-                <button data-tweak="end-later" title="end 0.5s later (extend after)">end ⏩</button>
-                <button data-tweak="reset" class="seg-reset" title="reset pads to default (2s before / 1s after)">↺</button>
-              </div>`}
           <button title="copy the source VOD basename + timestamp range to clipboard"
                   onclick="navigator.clipboard.writeText('${escape(s.b)}.mp4 @ ${s.t}-${(s.t + s.d).toFixed(1)}s')"><i data-lucide="clipboard">📋</i> copy timestamp ref</button>
         </div>
@@ -3872,57 +3043,9 @@ function syncQClear() {
   const btn = $("#qclear");
   if (btn) btn.classList.toggle("visible", $("#q").value.length > 0);
 }
-// Detect a Twitch VOD URL or bare numeric VOD id pasted into the search
-// box and show a "submit this VOD" affordance instead of running a doomed
-// text search. Bare 9-12 digit numbers are treated as Twitch VOD IDs.
-const TWITCH_URL_RE = /(?:twitch\.tv\/videos\/|twitch\.tv\/[^/]+\/v\/|vodvod\.top\/.*)(\d{6,12})/i;
-const BARE_VOD_ID_RE = /^\s*(\d{8,12})\s*$/;
-function detectVodInQuery(q) {
-  const m = q.match(TWITCH_URL_RE) || q.match(BARE_VOD_ID_RE);
-  if (m) return { url: q.includes("twitch") || q.includes("vodvod") ? q : `https://www.twitch.tv/videos/${m[1]}`, id: m[1] };
-  return null;
-}
-function syncQPasteHint() {
-  const hint = $("#qPasteHint");
-  if (!hint) return;
-  const v = $("#q").value.trim();
-  const det = detectVodInQuery(v);
-  if (!det) { hint.classList.remove("visible", "matched"); return; }
-  // If the typed URL matches an in-flight (or recently-completed)
-  // submission, repaint the hint as a status indicator so a re-paste of
-  // the same URL doesn't look like a fresh submit prompt.
-  const match = findInflightByUrl(v);
-  const txt = hint.querySelector(".qp-text");
-  const btn = hint.querySelector("button");
-  if (match) {
-    const lbl = inflightLabelFor(match);
-    const pct = inflightPctFor(match);
-    const sub = match.creator && match.basename ? `${match.creator}/${match.basename}` : (match.title || v);
-    hint.classList.add("matched");
-    txt.innerHTML = `${lbl.emoji} <b>${escape(lbl.txt)}</b>${pct ? ` · ${escape(pct)}` : ""} — <span style="color:#94a3b8">${escape(sub)}</span>`;
-    if (lbl.cls === "done" && match.deep_link) {
-      btn.textContent = "▶ search this VOD";
-      btn.onclick = () => { location.href = match.deep_link; };
-    } else {
-      btn.textContent = "show details";
-      btn.onclick = () => { $("#inflightPopover").classList.add("open"); };
-    }
-  } else {
-    hint.classList.remove("matched");
-    txt.innerHTML = `that looks like a <b>Twitch VOD URL</b> — want to add it to the corpus?`;
-    btn.textContent = "+ submit this VOD";
-    btn.onclick = () => {
-      const v2 = $("#q").value.trim();
-      const det2 = detectVodInQuery(v2);
-      if (det2) openSubmit(det2.url);
-    };
-  }
-  hint.classList.add("visible");
-}
 $("#q").addEventListener("input", () => {
   hideRecent();
   syncQClear();
-  syncQPasteHint();
   // Typing a new query is a context change — drop the deep-link target
   // so the URL stops advertising a stale event.
   clearDeepLink();
@@ -3950,16 +3073,9 @@ $("#qclear").addEventListener("click", () => {
   $("#q").value = "";
   $("#q").focus();
   syncQClear();
-  syncQPasteHint();
   clearDeepLink();
   runSearch();
 });
-// qPasteSubmit's click handler is set dynamically by syncQPasteHint() —
-// it flips between "+ submit this VOD" (openSubmit) and "show details"/
-// "▶ search this VOD" depending on whether the typed URL matches an
-// in-flight submission. We seed the default once here so the very first
-// page-load click before any input event still works.
-syncQPasteHint();
 $("#creator").addEventListener("change", () => {
   // Switching creator invalidates a stored deep-link target (the new
   // creator likely has different VODs). Clear before runSearch so syncUrl
@@ -3997,11 +3113,10 @@ function switchMode(mode) {
 function placeholderForMode(mode) {
   switch (mode) {
     case "event":  return "filter VODs by title — events mode doesn't search transcripts";
-    case "vod":    return "search a phrase or paste a twitch URL…  ⌘K to focus";
-    case "clip":   return "search clip text…  ⌘K to focus";
+    case "vod":    return "search a phrase…  ⌘K to focus";
     case "saved":  return "filter your saved items…";
     case "all":
-    default:       return "search a phrase, paste a twitch VOD URL, or filter by creator…  ⌘K to focus";
+    default:       return "search a phrase or filter by creator…  ⌘K to focus";
   }
 }
 function syncPlaceholder() {
@@ -4082,9 +3197,8 @@ document.addEventListener("keydown", (ev) => {
     $("#q").select();
     return;
   }
-  // Esc — close submit → close help → close player → close recent → blur input → clear input
+  // Esc — close help → close player → close recent → blur input → clear input
   if (ev.key === "Escape") {
-    if ($("#submit").classList.contains("open")) { closeSubmit(); return; }
     if ($("#help").classList.contains("open")) { closeHelp(); return; }
     if ($("#recent").classList.contains("open")) { hideRecent(); return; }
     if (_twitchPanel && _twitchPanel.classList.contains("visible")) { hideTwitchPanel(); return; }
@@ -4099,10 +3213,10 @@ document.addEventListener("keydown", (ev) => {
   }
   // ? — open help (and don't trigger when typing)
   if (!inField && ev.key === "?") { ev.preventDefault(); openHelp(); return; }
-  // 1/2/3/4/5 — switch mode (skip while typing)
-  if (!inField && /^[12345]$/.test(ev.key)) {
+  // 1/2/3/4 — switch mode (skip while typing)
+  if (!inField && /^[1234]$/.test(ev.key)) {
     ev.preventDefault();
-    switchMode(["all","clip","vod","event","saved"][Number(ev.key) - 1]);
+    switchMode(["all","vod","event","saved"][Number(ev.key) - 1]);
     return;
   }
   // j/k or arrow keys — navigate rows (skip while typing)
@@ -4145,383 +3259,6 @@ document.addEventListener("keydown", (ev) => {
   }
 });
 
-// --- In-flight submission tracker ------------------------------------------
-// Persists pending /api/submit_vod jobs in localStorage so a tab refresh
-// (or a "wait, did I already submit this?" moment) doesn't lose them. The
-// topbar pill polls /api/submit_status for each non-terminal job; the
-// qPasteHint banner takes over when the URL the user is typing matches a
-// pending job (so re-submitting the same VOD becomes "✓ already submitting"
-// instead of a silent dupe-queue).
-const INFLIGHT_LS_KEY = "vtt_inflight_submissions_v1";
-const INFLIGHT_MAX = 8;
-const INFLIGHT_POLL_MS = 4000;
-let _inflightTimer = null;
-let _inflightPolling = false;
-
-function loadInflight() {
-  try {
-    const raw = localStorage.getItem(INFLIGHT_LS_KEY);
-    if (!raw) return [];
-    const arr = JSON.parse(raw);
-    return Array.isArray(arr) ? arr : [];
-  } catch { return []; }
-}
-function saveInflight(items) {
-  try {
-    localStorage.setItem(INFLIGHT_LS_KEY, JSON.stringify(items.slice(0, INFLIGHT_MAX)));
-  } catch {}
-}
-function recordInflightFromSubmit(resp, srcUrl) {
-  // resp is the /api/submit_vod response. status: "queued" | "already_processed".
-  const items = loadInflight();
-  if (resp.status === "already_processed") {
-    // Don't track these — they're done. But surface a brief toast on the
-    // pill so the user gets feedback that the submit closed cleanly.
-    return;
-  }
-  if (resp.status === "queued" && resp.job_id) {
-    // Replace any pre-existing entry with the same job_id, OR with the
-    // same creator+basename (a true dupe submit returns the same job_id
-    // post-dedupe; an earlier-error submit might leave an orphan).
-    const next = items.filter(it =>
-      it.job_id !== resp.job_id &&
-      !(it.creator === resp.creator && it.basename === resp.basename));
-    next.unshift({
-      job_id: resp.job_id,
-      url: srcUrl || "",
-      creator: resp.creator || "",
-      basename: resp.basename || "",
-      title: resp.title || "",
-      twitch_vod_id: resp.twitch_vod_id || "",
-      deep_link: resp.deep_link || "",
-      stage: "queued",
-      progress: {},
-      started_at: Date.now(),
-      finished_at: null,
-      kind: "polling",   // polling | done | already | error
-    });
-    saveInflight(next);
-  }
-  renderInflight();
-  ensureInflightPolling();
-}
-function findInflightByUrl(url) {
-  if (!url) return null;
-  const items = loadInflight();
-  // Match on raw URL OR extracted twitch vod id from the URL.
-  const m = url.match(TWITCH_URL_RE) || url.match(BARE_VOD_ID_RE);
-  const tid = m ? m[1] : null;
-  for (const it of items) {
-    if (it.url === url) return it;
-    if (tid && it.twitch_vod_id && String(it.twitch_vod_id) === String(tid)) return it;
-  }
-  return null;
-}
-function inflightLabelFor(it) {
-  if (it.kind === "done")    return { txt: "ready",       cls: "done", emoji: "✓" };
-  if (it.kind === "already") return { txt: "in corpus",   cls: "done", emoji: "✓" };
-  if (it.kind === "error")   return { txt: "failed",      cls: "err",  emoji: "⚠" };
-  const stage = it.stage || "queued";
-  if (stage === "downloading")  return { txt: "downloading",  cls: "", emoji: "▶" };
-  if (stage === "transcribing") return { txt: "transcribing", cls: "", emoji: "▶" };
-  if (stage === "publishing")   return { txt: "publishing",   cls: "", emoji: "▶" };
-  if (stage === "done")         return { txt: "ready",        cls: "done", emoji: "✓" };
-  return { txt: "queued", cls: "", emoji: "▶" };
-}
-function inflightPctFor(it) {
-  // Estimate rough progress when we have bytes and (optionally) total. We
-  // don't always have total; show MB only if no total. Keep it cheap.
-  const p = it.progress || {};
-  const bw = Number(p.bytes_written || 0);
-  const tot = Number(p.bytes_total || 0);
-  if (tot > 0 && bw > 0) {
-    const pct = Math.max(1, Math.min(99, Math.round((bw / tot) * 100)));
-    return `${pct}%`;
-  }
-  if (bw > 0) {
-    const mb = bw / (1024 * 1024);
-    if (mb > 1024) return `${(mb / 1024).toFixed(1)} GB`;
-    return `${mb.toFixed(0)} MB`;
-  }
-  return "";
-}
-function renderInflight() {
-  const items = loadInflight();
-  const pill = $("#inflightPill");
-  const dot = $("#inflightDot");
-  const stageEl = $("#inflightStage");
-  const pctEl = $("#inflightPct");
-  const nameEl = $("#inflightName");
-  if (!pill) return;
-  // Pick the most-recent active item to display on the pill itself.
-  const active = items.find(it => it.kind !== "done" && it.kind !== "already" && it.kind !== "error")
-              || items[0];
-  if (!active) {
-    pill.classList.remove("visible");
-    $("#inflightPopover").classList.remove("open");
-    syncQPasteHint();
-    return;
-  }
-  pill.classList.add("visible");
-  const lbl = inflightLabelFor(active);
-  dot.className = `ip-dot ${lbl.cls}`.trim();
-  stageEl.textContent = lbl.txt;
-  const pct = inflightPctFor(active);
-  pctEl.textContent = pct ? ` · ${pct}` : "";
-  const display = active.creator && active.basename
-    ? `${active.creator}/${active.basename}`
-    : (active.title || active.url || "");
-  nameEl.textContent = display;
-  pill.title = display + " — " + lbl.txt + (pct ? ` (${pct})` : "");
-
-  // Popover list of all tracked items.
-  const list = $("#inflightList");
-  list.innerHTML = items.map(it => {
-    const l = inflightLabelFor(it);
-    const p = inflightPctFor(it);
-    const lbl2 = `<span class="${l.cls === "done" ? "pdone" : l.cls === "err" ? "perr" : "pst"}">${escape(l.emoji + " " + l.txt)}</span>`;
-    const sub  = it.creator && it.basename ? escape(`${it.creator}/${it.basename}`) : escape(it.title || it.url || "");
-    const dl   = (l.cls === "done" && it.deep_link)
-      ? `<br><a class="ipdeep" href="${escape(it.deep_link)}">▶ search this VOD</a>` : "";
-    const pctSpan = p ? `<span>${escape(p)}</span>` : "";
-    return `
-      <div class="iprow">
-        <div class="ipt">${sub}</div>
-        <div class="ipm">${lbl2}${pctSpan}</div>
-        ${dl}
-      </div>`;
-  }).join("");
-
-  // Sync the qPasteHint takeover state — if the typed URL matches an
-  // in-flight item, repaint the hint as a status indicator instead of a
-  // submit CTA.
-  syncQPasteHint();
-}
-async function pollInflightOnce() {
-  const items = loadInflight();
-  if (!items.length || !RENDER_API) return false;
-  const active = items.filter(it => it.kind === "polling");
-  if (!active.length) return false;
-  let anyChange = false;
-  await Promise.all(active.map(async (it) => {
-    try {
-      const r = await fetch(`${RENDER_API}/api/submit_status?job_id=${encodeURIComponent(it.job_id)}`);
-      if (!r.ok) return;
-      const body = await r.json();
-      if (!body || !body.ok) return;
-      if (body.stage === "error" || body.status === "failed" || body.status === "cancelled") {
-        it.kind = "error"; it.stage = "error"; it.finished_at = Date.now();
-        anyChange = true;
-        return;
-      }
-      if (body.stage === "done") {
-        it.kind = "done"; it.stage = "done"; it.finished_at = Date.now();
-        if (body.deep_link) it.deep_link = body.deep_link;
-        if (body.creator) it.creator = body.creator;
-        if (body.basename) it.basename = body.basename;
-        anyChange = true;
-        return;
-      }
-      // Still in flight — capture stage + progress diff.
-      const newStage = body.stage || it.stage;
-      const newProg  = body.progress || it.progress || {};
-      if (newStage !== it.stage || JSON.stringify(newProg) !== JSON.stringify(it.progress)) {
-        it.stage = newStage; it.progress = newProg;
-        if (body.creator && !it.creator) it.creator = body.creator;
-        if (body.basename && !it.basename) it.basename = body.basename;
-        anyChange = true;
-      }
-    } catch {}
-  }));
-  if (anyChange) saveInflight(items);
-  return anyChange;
-}
-async function inflightTick() {
-  if (_inflightPolling) return;
-  _inflightPolling = true;
-  try {
-    const changed = await pollInflightOnce();
-    if (changed) renderInflight();
-  } finally {
-    _inflightPolling = false;
-  }
-}
-function ensureInflightPolling() {
-  // Schedule the next tick if there's anything still polling. When all items
-  // are terminal we let the timer go quiet — the pill itself stays mounted
-  // (so the user can click "clear done") until they dismiss.
-  const items = loadInflight();
-  const hasActive = items.some(it => it.kind === "polling");
-  if (_inflightTimer) { clearTimeout(_inflightTimer); _inflightTimer = null; }
-  if (hasActive) {
-    _inflightTimer = setTimeout(() => { inflightTick().finally(ensureInflightPolling); }, INFLIGHT_POLL_MS);
-  }
-}
-function dismissInflightDone() {
-  const items = loadInflight().filter(it => it.kind === "polling");
-  saveInflight(items);
-  renderInflight();
-  $("#inflightPopover").classList.remove("open");
-}
-
-// --- Submit-a-VOD modal -----------------------------------------------------
-const SUBMIT_STAGES = ["queued", "downloading", "transcribing", "publishing", "done"];
-let submitPoll = null;
-function openSubmit(prefill) {
-  const m = $("#submit");
-  m.classList.add("open");
-  if (prefill) $("#submitUrl").value = prefill;
-  setTimeout(() => $("#submitUrl").focus(), 30);
-}
-function closeSubmit() {
-  $("#submit").classList.remove("open");
-  if (submitPoll) { clearTimeout(submitPoll); submitPoll = null; }
-}
-function renderSubmitProgress(payload, kind) {
-  // kind: "queued" | "polling" | "done" | "already" | "error"
-  const box = $("#submitProgress");
-  box.classList.add("show");
-  box.classList.toggle("err", kind === "error");
-  box.classList.toggle("done", kind === "done" || kind === "already");
-  const stage = (payload && payload.stage) || (kind === "already" ? "done" : kind === "error" ? "" : "queued");
-  const idx = SUBMIT_STAGES.indexOf(stage);
-  // Build pip bar
-  $("#submitStagebar").innerHTML = SUBMIT_STAGES.map((s, i) => {
-    let cls = "pip";
-    if (kind === "error") cls += "";  // leave neutral
-    else if (idx >= 0 && i < idx) cls += " past";
-    else if (idx >= 0 && i === idx && stage !== "done") cls += " active";
-    else if (i === idx && stage === "done") cls += " past";
-    return `<div class="${cls}"></div>`;
-  }).join("");
-  let label = "";
-  if (kind === "error") label = `error: ${escape(payload.error || "unknown")}`;
-  else if (kind === "already") label = `already in the corpus — searchable now`;
-  else if (kind === "done") label = `done — transcript published`;
-  else if (stage === "downloading") label = "downloading from vodvod.top…";
-  else if (stage === "transcribing") label = "transcribing with Parakeet…";
-  else if (stage === "publishing") label = "publishing to public bucket…";
-  else if (stage === "queued") label = "queued";
-  else label = stage || "";
-  $("#submitStage").textContent = label;
-  const meta = [];
-  if (payload && payload.creator) meta.push(payload.creator);
-  if (payload && payload.basename) meta.push(payload.basename);
-  if (payload && payload.title) meta.push(`"${String(payload.title).slice(0, 60)}${String(payload.title).length > 60 ? "…" : ""}"`);
-  if (payload && payload.progress && typeof payload.progress.bytes_written === "number" && payload.progress.bytes_written > 0) {
-    const mb = (payload.progress.bytes_written / (1024 * 1024)).toFixed(1);
-    meta.push(`${mb} MB downloaded`);
-  }
-  $("#submitMeta").innerHTML = meta.map(escape).join(" · ");
-  if (payload && payload.deep_link && (kind === "done" || kind === "already")) {
-    $("#submitMeta").innerHTML += `<br><a class="deep" href="${escape(payload.deep_link)}">▶ search this VOD</a>`;
-  }
-}
-async function submitGo() {
-  const url = $("#submitUrl").value.trim();
-  if (!url) { $("#submitUrl").focus(); return; }
-  if (!RENDER_API) {
-    renderSubmitProgress({ error: "render API offline — try again later" }, "error");
-    return;
-  }
-  $("#submitGo").disabled = true;
-  $("#submitUrl").disabled = true;
-  renderSubmitProgress({ stage: "queued" }, "polling");
-  let resp;
-  try {
-    const r = await fetch(`${RENDER_API}/api/submit_vod`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url }),
-    });
-    const body = await r.json();
-    if (!r.ok || !body.ok) throw new Error(body.error || `HTTP ${r.status}`);
-    resp = body;
-  } catch (e) {
-    renderSubmitProgress({ error: String(e.message || e) }, "error");
-    $("#submitGo").disabled = false;
-    $("#submitUrl").disabled = false;
-    return;
-  }
-  if (resp.status === "already_processed") {
-    renderSubmitProgress(resp, "already");
-    $("#submitGo").disabled = false;
-    $("#submitUrl").disabled = false;
-    return;
-  }
-  if (resp.status !== "queued" || !resp.job_id) {
-    renderSubmitProgress({ error: "unexpected response: " + JSON.stringify(resp).slice(0, 120) }, "error");
-    $("#submitGo").disabled = false;
-    $("#submitUrl").disabled = false;
-    return;
-  }
-  // Record into localStorage-backed in-flight tracker so the topbar pill +
-  // qPasteHint keep displaying status even after this modal is closed or
-  // the page is refreshed.
-  recordInflightFromSubmit(resp, url);
-  // Render the initial queued response so the user sees creator/basename/title.
-  renderSubmitProgress(resp, "polling");
-  // Poll loop.
-  const poll = async () => {
-    try {
-      const r = await fetch(`${RENDER_API}/api/submit_status?job_id=${encodeURIComponent(resp.job_id)}`);
-      const body = await r.json();
-      if (!r.ok || !body.ok) throw new Error(body.error || `HTTP ${r.status}`);
-      // Carry the title forward — the status endpoint doesn't echo it.
-      const merged = Object.assign({}, body, { title: resp.title });
-      if (body.stage === "error" || body.status === "failed" || body.status === "cancelled") {
-        renderSubmitProgress(merged, "error");
-        $("#submitGo").disabled = false;
-        $("#submitUrl").disabled = false;
-        return;
-      }
-      if (body.stage === "done") {
-        renderSubmitProgress(merged, "done");
-        $("#submitGo").disabled = false;
-        $("#submitUrl").disabled = false;
-        return;
-      }
-      renderSubmitProgress(merged, "polling");
-      submitPoll = setTimeout(poll, 3000);
-    } catch (e) {
-      renderSubmitProgress({ error: String(e.message || e) }, "error");
-      $("#submitGo").disabled = false;
-      $("#submitUrl").disabled = false;
-    }
-  };
-  submitPoll = setTimeout(poll, 3000);
-}
-$("#submitTrigger").addEventListener("click", () => openSubmit());
-$("#submitGo").addEventListener("click", submitGo);
-
-// Topbar in-flight pill — click toggles popover; click outside closes it.
-$("#inflightPill").addEventListener("click", (ev) => {
-  ev.stopPropagation();
-  $("#inflightPopover").classList.toggle("open");
-});
-$("#inflightDismissAll").addEventListener("click", (ev) => {
-  ev.stopPropagation();
-  dismissInflightDone();
-});
-document.addEventListener("click", (ev) => {
-  const wrap = $("#inflightWrap");
-  if (wrap && !wrap.contains(ev.target)) {
-    $("#inflightPopover").classList.remove("open");
-  }
-});
-// Render persisted state on load + start polling for any non-terminal jobs.
-renderInflight();
-ensureInflightPolling();
-// Tick once shortly after boot in case the page was opened mid-job (so the
-// first visible state isn't "queued" stale-from-localStorage).
-setTimeout(() => { inflightTick().finally(ensureInflightPolling); }, 800);
-$("#submitUrl").addEventListener("keydown", (ev) => {
-  if (ev.key === "Enter") { ev.preventDefault(); submitGo(); }
-});
-$("#submit").addEventListener("click", (ev) => {
-  if (ev.target.classList.contains("sclose") || ev.target === $("#submit")) closeSubmit();
-});
-
 async function bootFromUrl() {
   loadStarred();
   loadRecent();
@@ -4529,8 +3266,7 @@ async function bootFromUrl() {
   const q = params.get("q") || "";
   const creator = params.get("creator") || "";
   const mode = (params.get("mode") || "all").toLowerCase();
-  // Deep-share params (?clip=<id> or ?vod=<creator>/<basename>&t=<sec>)
-  const deepClip = params.get("clip");
+  // Deep-share params (?vod=<creator>/<basename>&t=<sec>)
   const deepVod = params.get("vod");
   const deepT = params.get("t");
   // Stash the target into state immediately so the very first syncUrl()
@@ -4538,10 +3274,8 @@ async function bootFromUrl() {
   // of rewriting it down to `?mode=event&event=…`.
   if (deepVod) state.deepVod = deepVod;
   if (deepT != null && deepT !== "") state.deepT = Number(deepT);
-  // ?submit=1 opens the submission panel on first paint; ?submit=<url> also prefills
-  const submitOpen = params.get("submit");
   if (q) $("#q").value = q;
-  if (mode && ["all","clip","vod","event","saved"].includes(mode)) {
+  if (mode && ["all","vod","event","saved"].includes(mode)) {
     state.mode = mode;
     $("#modes").querySelectorAll("button").forEach((b) => {
       b.classList.toggle("active", b.dataset.mode === mode);
@@ -4559,20 +3293,6 @@ async function bootFromUrl() {
   await loadCreators();
   if (creator) $("#creator").value = creator;
   loadConfig();
-  if (submitOpen) {
-    const prefill = submitOpen.startsWith("http") || /^\d{6,}$/.test(submitOpen) ? submitOpen : "";
-    openSubmit(prefill);
-  }
-  if (deepClip) {
-    // Jump straight to clips mode and focus the named clip; if it's not in
-    // the current results, fall back to a search by id.
-    switchMode("clip");
-    setTimeout(() => {
-      const row = document.querySelector(`.clip-row[data-id="${CSS.escape(deepClip)}"]`);
-      if (row) { row.scrollIntoView({block:"center"}); togglePlayer(row); }
-    }, 600);
-    return;
-  }
   if (deepVod && deepT && mode === "event") {
     // Event-mode deep link: pre-narrow to the target VOD's creator so the
     // result list is guaranteed to include it (a global "all gen_popped"
@@ -4670,13 +3390,6 @@ async function refreshAuth() {
     loginBtn.hidden = false;
   }
   state.session = session;
-  // Start ambient queue polling when logged in; stop when logged out.
-  if (session && session.authenticated) {
-    startMyQueuePolling();
-  } else {
-    stopMyQueuePolling();
-    document.getElementById("queuePill")?.classList.remove("visible");
-  }
   // If the logged-in handle matches a creator dir we have, surface their
   // VODs as a personalized section on the landing page (only when nothing
   // else is being rendered — search query active or a deep-link page).
@@ -4732,118 +3445,7 @@ document.getElementById("logoutBtn").addEventListener("click", async () => {
   try {
     await fetch("/api/auth/logout", { method: "POST", credentials: "same-origin" });
   } catch { /* ignore */ }
-  stopMyQueuePolling();
-  document.getElementById("queuePill").classList.remove("visible");
   refreshAuth();
-});
-
-// ── "your VODs" ambient queue indicator ────────────────────────────────────
-// Polls /api/my_queue every 30 s when logged in. Shows a pill in the topbar
-// with the count of in-flight jobs (queued+running). When a job transitions
-// from running→done since last poll, shows a brief toast. Popover lists all
-// recent jobs with deep-link buttons.
-let _myQueueJobs = [];
-let _myQueuePollTimer = null;
-const QUEUE_POLL_MS = 30_000;
-
-function _statusDot(status) {
-  const cls = { queued: "queued", running: "running", done: "done",
-                failed: "failed", orphaned: "orphaned", cancelled: "cancelled" }[status] || "queued";
-  return `<span class="qp-dot ${cls}"></span>`;
-}
-
-function _renderQueuePopover(jobs) {
-  const body = document.getElementById("queuePopoverBody");
-  if (!body) return;
-  if (!jobs.length) {
-    body.innerHTML = `<div class="qp-empty">no recent submissions</div>`;
-    return;
-  }
-  body.innerHTML = jobs.map((j) => {
-    const name = j.basename || j.creator || j.job_id || "…";
-    const label = j.creator ? `${j.creator}/${name}` : name;
-    const statusText = j.restart_orphan ? "orphaned — re-submit" : j.status;
-    const linkHtml = j.deep_link && (j.status === "done")
-      ? `<a class="qp-link" href="${escape(j.deep_link)}">▶ view ${escape(j.basename || j.creator || "VOD")}</a>`
-      : "";
-    return `<div class="qp-job">
-      <div class="qp-job-row">
-        ${_statusDot(j.status)}
-        <span class="qp-name" title="${escape(label)}">${escape(label)}</span>
-        <span class="qp-status">${escape(statusText)}</span>
-      </div>
-      ${linkHtml}
-    </div>`;
-  }).join("");
-}
-
-function _updateQueuePill(jobs) {
-  const pill = document.getElementById("queuePill");
-  const countEl = document.getElementById("queuePillCount");
-  if (!pill || !countEl) return;
-  const inflight = jobs.filter((j) => j.status === "queued" || j.status === "running").length;
-  countEl.textContent = String(inflight);
-  if (jobs.length > 0) {
-    pill.classList.add("visible");
-  } else {
-    pill.classList.remove("visible");
-  }
-  _renderQueuePopover(jobs);
-  if (typeof lucide !== "undefined") lucide.createIcons();
-}
-
-async function _tickMyQueue() {
-  if (!state.session || !state.session.authenticated) return;
-  let jobs = [];
-  try {
-    const r = await fetch("/api/my_queue", { credentials: "same-origin" });
-    if (r.status === 401) { stopMyQueuePolling(); return; }
-    if (!r.ok) return;
-    const d = await r.json();
-    jobs = d.jobs || [];
-  } catch {
-    return;
-  }
-
-  // Detect transitions to done since the last poll.
-  const prevById = new Map(_myQueueJobs.map((j) => [j.job_id, j.status]));
-  for (const j of jobs) {
-    const prev = prevById.get(j.job_id);
-    if (prev && prev !== "done" && j.status === "done") {
-      const label = j.basename || j.creator || "VOD";
-      toast(`✓ ${label} ready`);
-    }
-  }
-
-  _myQueueJobs = jobs;
-  _updateQueuePill(jobs);
-}
-
-function startMyQueuePolling() {
-  if (_myQueuePollTimer) return; // already running
-  _tickMyQueue(); // immediate first fetch
-  _myQueuePollTimer = setInterval(_tickMyQueue, QUEUE_POLL_MS);
-}
-
-function stopMyQueuePolling() {
-  if (_myQueuePollTimer) {
-    clearInterval(_myQueuePollTimer);
-    _myQueuePollTimer = null;
-  }
-  _myQueueJobs = [];
-}
-
-// Wire queue pill toggle.
-document.getElementById("queuePillBtn").addEventListener("click", (ev) => {
-  ev.stopPropagation();
-  const pop = document.getElementById("queuePopover");
-  const dim = document.getElementById("queueDismiss");
-  const open = pop.classList.toggle("open");
-  dim.classList.toggle("open", open);
-});
-document.getElementById("queueDismiss").addEventListener("click", () => {
-  document.getElementById("queuePopover").classList.remove("open");
-  document.getElementById("queueDismiss").classList.remove("open");
 });
 
 refreshAuth();

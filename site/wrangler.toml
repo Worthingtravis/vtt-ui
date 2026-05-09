@@ -6,17 +6,13 @@ pages_build_output_dir = "."
 binding = "PUBLIC_BUCKET"
 bucket_name = "vtt-public-prod"
 
-# ── x402 micropayment gate (Item 6) ─────────────────────────────────────
-# Phase 0 ships in SHADOW_MODE=true: the gate logs would-block events to
-# VTT_QUOTAS but never blocks. Lets us calibrate the free-tier knob with
-# real traffic before charging. Flip SHADOW_MODE=false on the Pages
-# project (Settings → Variables and Secrets → Production) when ready to
-# enforce.
-#
-# X402_RECEIVER_ADDRESS, X402_NETWORK, X402_FACILITATOR_URL, SHADOW_MODE
-# are NOT secrets and live in the Pages dashboard env, not here. They're
-# read from `env.X402_*` in `_x402.ts`.
-
+# NOTE: site is in transition mode — submit / scan-queue / clip-render /
+# bulk-download surfaces have been stripped (the new experience lives at
+# video.laughingwhales.com). The KV namespaces below are kept in the
+# binding list so any function that referenced them can be reintroduced
+# without re-provisioning, but no shipped function reads them today.
+#   VTT_QUOTAS  (was rate counters + x402 shadow-mode would-block log)
+#   VTT_API_KEYS (was Bearer-token → userId/balance cache)
 [[kv_namespaces]]
 binding = "VTT_QUOTAS"
 id = "bfa97bf0225c4ac19ec4a3937831c670"
